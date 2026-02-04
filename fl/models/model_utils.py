@@ -4,6 +4,18 @@ import torch
 
 # ======The two main APIs for model and 1-d numpy array conversion======
 
+def _ensure_tensor(vector, device=None, dtype=None):
+    if torch.is_tensor(vector):
+        tensor = vector
+    else:
+        tensor = torch.from_numpy(vector)
+    if device is not None or dtype is not None:
+        tensor = tensor.to(
+            device=device if device is not None else tensor.device,
+            dtype=dtype if dtype is not None else tensor.dtype,
+        )
+    return tensor
+
 
 def vec2model(vector, model, plus=False, ignorebn=False):
     """
@@ -14,14 +26,14 @@ def vec2model(vector, model, plus=False, ignorebn=False):
     model_state_dict = model.state_dict()
     device = next(model.parameters()).device
     dtype = next(model.parameters()).dtype
+    vec_tensor = _ensure_tensor(vector, device=device, dtype=dtype)
 
     for key, value in model_state_dict.items():
         if ignorebn:
             if any(substring in key for substring in ['running_mean', 'running_var', 'num_batches_tracked']):
                 continue
         numel = value.numel()
-        param_tensor = torch.from_numpy(
-            vector[curr_idx:curr_idx + numel].reshape(value.shape)).to(device=device, dtype=dtype)
+        param_tensor = vec_tensor[curr_idx:curr_idx + numel].reshape(value.shape)
 
         if plus:
             value.copy_(value + param_tensor)  # in-place addition
@@ -57,17 +69,25 @@ def vector2parameter(vector, model):
     in-place modification of iterable model_parameters's data
     """
     current_pos = 0
-    for param in model.parameters():
+    params = list(model.parameters())
+    if not params:
+        return
+    vec_tensor = _ensure_tensor(
+        vector, device=params[0].device, dtype=params[0].dtype)
+    for param in params:
         numel = param.numel()  # get the number of elements in param
-        param.data = torch.from_numpy(
-            vector[current_pos:current_pos + numel].reshape(param.shape)).to(param.device)
+        param.data.copy_(
+            vec_tensor[current_pos:current_pos + numel].reshape(param.shape))
         current_pos += numel
 
 
 def parameter2vector(model):
     # numpy() will convert torch.float32 to np.float32
-    model_parameters = model.parameters()
-    return np.concatenate([param.detach().cpu().numpy().flatten() for param in model_parameters])
+    params = list(model.parameters())
+    if not params:
+        return np.array([])
+    vec = torch.cat([param.detach().reshape(-1) for param in params])
+    return vec.cpu().numpy()
 
 
 def set_grad_none(model):
@@ -83,11 +103,15 @@ def vector2gradient(vector, model):
     in-place modification of iterable model_parameters's grad
     """
     current_pos = 0
-    parameters = model.parameters()
-    for param in parameters:
+    params = list(model.parameters())
+    if not params:
+        return
+    vec_tensor = _ensure_tensor(
+        vector, device=params[0].device, dtype=params[0].dtype)
+    for param in params:
         numel = param.numel()  # get the number of elements in param
-        param.grad = torch.from_numpy(
-            vector[current_pos:current_pos + numel].reshape(param.shape)).to(param.device)
+        param.grad = vec_tensor[current_pos:current_pos +
+                                numel].reshape(param.shape)
         current_pos += numel
 
 
@@ -95,8 +119,11 @@ def gradient2vector(model):
     """
     Convert gradients to a concatenated 1D numpy array
     """
-    parameters = model.parameters()
-    return np.concatenate([param.grad.cpu().numpy().flatten() for param in parameters])
+    params = list(model.parameters())
+    if not params:
+        return np.array([])
+    vec = torch.cat([param.grad.detach().reshape(-1) for param in params])
+    return vec.cpu().numpy()
 
 
 def ol_from_vector(vector, model_template, flatten=True, return_type='dict'):
@@ -142,14 +169,14 @@ def vec2state(vector, model, plus=False, ignorebn=False, numpy=False):
     model_state_dict = deepcopy(model.state_dict())
     device = next(model.parameters()).device
     dtype = next(model.parameters()).dtype
+    vec_tensor = _ensure_tensor(vector, device=device, dtype=dtype)
 
     for key, value in model_state_dict.items():
         if ignorebn:
             if any(substring in key for substring in ['running_mean', 'running_var', 'num_batches_tracked']):
                 continue
         numel = value.numel()
-        param_tensor = torch.from_numpy(
-            vector[curr_idx:curr_idx + numel].reshape(value.shape)).to(device=device, dtype=dtype)
+        param_tensor = vec_tensor[curr_idx:curr_idx + numel].reshape(value.shape)
 
         if plus:
             value.copy_(value + param_tensor)  # in-place addition
@@ -162,7 +189,7 @@ def vec2state(vector, model, plus=False, ignorebn=False, numpy=False):
     return model_state_dict
 
 
-def state2vec(model_state_dict, ignorebn=False, numpy_flg=False):
+def state2vec(model_state_dict, ignorebn=False, numpy_flg=False, return_torch=False):
     """
     Convert a state dict to a concatenated 1D numpy array.
     """
@@ -173,12 +200,17 @@ def state2vec(model_state_dict, ignorebn=False, numpy_flg=False):
             for name, value in model_state_dict.items()
             if (True if not ignorebn else all(substring not in name for substring in ['running_mean', 'running_var', 'num_batches_tracked']))
         ]
-    else:
-        arrays = [
-            i.detach().cpu().numpy().flatten()
-            for name, i in model_state_dict.items()
-            if (True if not ignorebn else all(substring not in name for substring in ['running_mean', 'running_var', 'num_batches_tracked']))
-        ]
+        return np.concatenate(arrays) if arrays else np.array([])
 
+    tensors = [
+        i.detach().reshape(-1)
+        for name, i in model_state_dict.items()
+        if (True if not ignorebn else all(substring not in name for substring in ['running_mean', 'running_var', 'num_batches_tracked']))
+    ]
+    if not tensors:
+        return torch.empty(0) if return_torch else np.array([])
+    vec = torch.cat(tensors)
+    if return_torch:
+        return vec
     # Concatenate the list of arrays at once
-    return np.concatenate(arrays)
+    return vec.cpu().numpy()
