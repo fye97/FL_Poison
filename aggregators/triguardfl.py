@@ -35,7 +35,7 @@ class _ServerEvaluator:
         for cls, cls_indices in indices_by_class.items():
             if not cls_indices:
                 continue
-            class_dataset = subset_by_idx(self.args, dataset, np.array(cls_indices), train=True)
+            class_dataset = subset_by_idx(self.args, dataset, np.array(cls_indices), train=False)
             class_loaders[int(cls)] = DataLoader(
                 class_dataset,
                 batch_size=batch_size,
