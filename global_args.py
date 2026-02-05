@@ -55,7 +55,7 @@ def read_args():
     # attacks and defenses settings
     all_attacks = ['NoAttack'] + \
         model_poisoning_attacks + data_poisoning_attacks
-    parser.add_argument('-att', '--attack',
+    parser.add_argument('-att', '-attack', '--attack',
                         choices=all_attacks, help="Attacks options")
     parser.add_argument('-attack_start_epoch', '--attack_start_epoch',
                         type=int, help="the attack start epoch")
