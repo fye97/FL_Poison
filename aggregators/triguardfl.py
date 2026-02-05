@@ -8,6 +8,7 @@ from torch.utils.data import DataLoader, Dataset
 
 from aggregators import aggregator_registry
 from aggregators.aggregatorbase import AggregatorBase
+from aggregators.aggregator_utils import prepare_updates, wrapup_aggregated_grads
 from fl.models.model_utils import vec2model
 
 
@@ -278,11 +279,6 @@ class TriGuardFL(AggregatorBase):
         self.alphas = np.ones(num_clients, dtype=float)
         self.betas = np.ones(num_clients, dtype=float)
 
-    def _recover_local_weights(self, updates: np.ndarray, global_weights_vec: np.ndarray) -> np.ndarray:
-        if self.args.algorithm == "FedAvg":
-            return updates
-        return updates + global_weights_vec
-
     def aggregate(self, updates, **kwargs):
         self.global_model = kwargs["last_global_model"]
         global_weights_vec = kwargs["global_weights_vec"]
@@ -296,7 +292,9 @@ class TriGuardFL(AggregatorBase):
             self.betas = np.ones(num_clients, dtype=float)
 
         chosen_users = list(range(num_clients))
-        local_model_vecs = self._recover_local_weights(updates, global_weights_vec)
+        local_model_vecs, _ = prepare_updates(
+            self.args.algorithm, updates, self.global_model, vector_form=True
+        )
 
         cosine_similarity = _median_cosine_similarities(local_model_vecs)
         malicious_candidate, malicious_candidate_index = _malicious_detection_candidate(
@@ -331,6 +329,7 @@ class TriGuardFL(AggregatorBase):
         )
 
         aggregated_model_vec = _weighted_average_vectors(local_model_vecs, rep)
-        if self.args.algorithm == "FedAvg":
-            return aggregated_model_vec
-        return aggregated_model_vec - global_weights_vec
+        aggregated_grad = aggregated_model_vec - global_weights_vec
+        return wrapup_aggregated_grads(
+            aggregated_grad, self.args.algorithm, self.global_model, aggregated=True
+        )
