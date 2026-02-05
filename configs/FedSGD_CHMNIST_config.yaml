@@ -175,6 +175,13 @@ defenses:
           selection_fraction: 0.1
           clustering: "MeanShift"
           random_seed: 2
+    - defense: TriGuardFL
+      defense_params:
+          cos_threshold: 1.01
+          significance: 0.02
+          discount: 0.9
+          num_items_test: 512
+          eval_batch_size: 128
     - defense: SparseFed
       defense_params:
           rho: 0
