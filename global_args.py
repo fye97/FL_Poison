@@ -187,7 +187,7 @@ def single_preprocess(args):
     args.device = device
     # ensure optional flags exist
     if not hasattr(args, 'log_stream') or args.log_stream is None:
-        args.log_stream = False
+        args.log_stream = True
     args.num_adv = frac_or_int_to_int(args.num_adv, args.num_clients)
 
     # ensure attack_params and defense_params attributes exist. when there is no params, set it to None.

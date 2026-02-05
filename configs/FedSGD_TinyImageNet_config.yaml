@@ -23,6 +23,7 @@ cache_partition: False # whether to cache the partitioned client indices
 gpu_idx: [0] # Indices of GPU
 num_workers: 0
 record_time: False
+log_stream: True
 partition_visualization: False # whether to visualize the partition distribution
 
 
