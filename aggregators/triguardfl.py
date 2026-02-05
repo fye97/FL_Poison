@@ -285,7 +285,10 @@ class TriGuardFL(AggregatorBase):
         updates = np.array(updates, dtype=np.float32)
         num_clients = len(updates)
         if num_clients == 0:
-            return global_weights_vec
+            zero_grad = np.zeros_like(global_weights_vec)
+            return wrapup_aggregated_grads(
+                zero_grad, self.args.algorithm, self.global_model, aggregated=True
+            )
 
         if len(self.alphas) != num_clients:
             self.alphas = np.ones(num_clients, dtype=float)
