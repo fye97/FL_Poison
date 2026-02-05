@@ -67,6 +67,8 @@ def read_args():
                         help='the proportion (float < 1) or number (int>1) of adversaries')
     parser.add_argument('-o', '--output', type=str,
                         help='output file for results')
+    parser.add_argument('--log_stream', action='store_true', default=None,
+                        help='Enable logging to stdout (tqdm-safe).')
     # poison settings
     parser.add_argument('-prate', '--poisoning_ratio',
                         help='poisoning portion (float, range from 0 to 1, default: 0.1)')
@@ -183,6 +185,9 @@ def single_preprocess(args):
         device = torch.device("cpu")
     print(f"Using device: {device}")
     args.device = device
+    # ensure optional flags exist
+    if not hasattr(args, 'log_stream') or args.log_stream is None:
+        args.log_stream = False
     args.num_adv = frac_or_int_to_int(args.num_adv, args.num_clients)
 
     # ensure attack_params and defense_params attributes exist. when there is no params, set it to None.

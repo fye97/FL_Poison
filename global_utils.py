@@ -6,9 +6,20 @@ import logging
 import random
 import numpy as np
 import torch
+from tqdm import tqdm
 
 
-def setup_logger(logger_name, log_file, level=logging.INFO, stream=False):
+class TqdmLoggingHandler(logging.Handler):
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            tqdm.write(msg)
+            self.flush()
+        except Exception:
+            self.handleError(record)
+
+
+def setup_logger(logger_name, log_file, level=logging.INFO, stream=False, use_tqdm=False):
     logger = logging.getLogger(logger_name)
     formatter = logging.Formatter('%(message)s')
     os.makedirs(os.path.dirname(log_file), exist_ok=True)
@@ -19,7 +30,7 @@ def setup_logger(logger_name, log_file, level=logging.INFO, stream=False):
     logger.addHandler(fileHandler)
 
     if stream:
-        streamHandler = logging.StreamHandler()
+        streamHandler = TqdmLoggingHandler() if use_tqdm else logging.StreamHandler()
         streamHandler.setFormatter(formatter)
         logger.addHandler(streamHandler)
 

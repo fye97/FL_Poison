@@ -1,6 +1,7 @@
 import gc
 import logging
 import time
+from tqdm import tqdm
 from fl import coordinator
 from global_args import benchmark_preprocess, read_args, override_args, single_preprocess
 from global_utils import avg_value, print_filtered_args, setup_logger, setup_seed
@@ -15,7 +16,8 @@ def fl_run(args):
     """
     # setup logger
     args.logger = setup_logger(
-        __name__, f'{args.output}', level=logging.INFO)
+        __name__, f'{args.output}', level=logging.INFO,
+        stream=args.log_stream, use_tqdm=args.log_stream)
     print_filtered_args(args, args.logger)
     start_time = time.time()
     args.logger.info(
@@ -38,7 +40,7 @@ def fl_run(args):
     coordinator.set_fl_algorithm(args, the_server, clients)
     args.logger.info("Clients and server are initialized")
     args.logger.info("Starting Training...")
-    for global_epoch in range(args.epochs):
+    for global_epoch in tqdm(range(args.epochs), desc="Global Epochs", dynamic_ncols=True):
         epoch_msg = f"Epoch {global_epoch:<3}\t"
         # print(f"Global epoch {global_epoch} begin")
         # server dispatches numpy version global weights 1d vector to clients
