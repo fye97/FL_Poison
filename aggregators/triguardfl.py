@@ -9,19 +9,8 @@ from torch.utils.data import DataLoader, Dataset
 from aggregators import aggregator_registry
 from aggregators.aggregatorbase import AggregatorBase
 from aggregators.aggregator_utils import prepare_updates, wrapup_aggregated_grads
+from datapreprocessor.data_utils import subset_by_idx
 from fl.models.model_utils import vec2model
-
-
-class _DatasetSplit(Dataset):
-    def __init__(self, dataset: Dataset, indices: np.ndarray):
-        self.dataset = dataset
-        self.indices = indices
-
-    def __len__(self):
-        return len(self.indices)
-
-    def __getitem__(self, item):
-        return self.dataset[int(self.indices[item])]
 
 
 class _ServerEvaluator:
@@ -46,7 +35,7 @@ class _ServerEvaluator:
         for cls, cls_indices in indices_by_class.items():
             if not cls_indices:
                 continue
-            class_dataset = _DatasetSplit(dataset, np.array(cls_indices))
+            class_dataset = subset_by_idx(self.args, dataset, np.array(cls_indices), train=True)
             class_loaders[int(cls)] = DataLoader(
                 class_dataset,
                 batch_size=batch_size,
