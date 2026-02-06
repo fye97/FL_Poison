@@ -19,32 +19,46 @@ def _ensure_tensor(vector, device=None, dtype=None):
 
 def vec2model(vector, model, plus=False, ignorebn=False):
     """
-    in-place modification of model's parameters
-    Convert a 1d-numpy array back into a model
+    in-place modification of model's parameters/buffers
+    Convert a 1d vector back into a model
     """
-    curr_idx = 0
-    model_state_dict = model.state_dict()
     device = next(model.parameters()).device
     dtype = next(model.parameters()).dtype
     vec_tensor = _ensure_tensor(vector, device=device, dtype=dtype)
 
-    with torch.no_grad():
-        for key, value in model_state_dict.items():
-            if ignorebn:
-                if any(substring in key for substring in ['running_mean', 'running_var', 'num_batches_tracked']):
-                    continue
+    # ---- build or reuse cached layout ----
+    # layout element: (key, numel, shape)
+    # cache is keyed by ignorebn (because skip set differs)
+    cache_attr = "_vec2model_layout_ignorebn" if ignorebn else "_vec2model_layout"
 
-            numel = value.numel()
-            param_tensor = vec_tensor[curr_idx:curr_idx + numel].reshape(value.shape)
+    layout = getattr(model, cache_attr, None)
+    if layout is None:
+        state = model.state_dict()
+        bn_skip = ('running_mean', 'running_var', 'num_batches_tracked')
+
+        built = []
+        for k, v in state.items():
+            if ignorebn and any(s in k for s in bn_skip):
+                continue
+            built.append((k, v.numel(), v.shape))
+        layout = built
+        setattr(model, cache_attr, layout)
+
+    # ---- apply vector into model ----
+    curr_idx = 0
+    state = model.state_dict()  # lightweight handle; tensors are references
+
+    with torch.no_grad():
+        for k, numel, shape in layout:
+            value = state[k]
+            param_tensor = vec_tensor[curr_idx:curr_idx + numel].view(shape)
 
             if plus:
-                value.add_(param_tensor)  # in-place addition
+                value.add_(param_tensor)
             else:
-                value.copy_(param_tensor)  # in-place assignment
-            curr_idx += numel
+                value.copy_(param_tensor)
 
-        # Note that the below method are only suitable for CNN without batch normalization layer
-        # vector2parameter(vector, model)
+            curr_idx += numel
 
 
 def model2vec(model):
