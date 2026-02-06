@@ -19,8 +19,11 @@ class Worker:
         Test poison will not shuffle and will poisoning all samples
         Test no poison will not shuffle and will not poisoning
         """
+        device = getattr(self.args, "device", None)
+        pin_memory = getattr(device, "type", None) == "cuda"
         dataloader = torch.utils.data.DataLoader(
-            dataset, batch_size=self.args.batch_size, shuffle=train_flag, num_workers=self.args.num_workers, pin_memory=True)
+            dataset, batch_size=self.args.batch_size, shuffle=train_flag,
+            num_workers=self.args.num_workers, pin_memory=pin_memory)
         if train_flag:
             while True:  # add infinite loop for training epoch, because dataloader will be consumed after one dataset iteration
                 for images, targets in dataloader:
