@@ -113,11 +113,16 @@ def _sample_balanced_indices(dataset: Dataset, num_samples: int) -> np.ndarray:
     return np.array(indices, dtype=np.int64)
 
 
-def _median_cosine_similarities(vectors: np.ndarray) -> List[float]:
+def _median_cosine_similarities(
+    vectors: np.ndarray, reference: np.ndarray, learning_rate: float
+) -> List[float]:
     if vectors.size == 0:
         return []
-    norms = np.linalg.norm(vectors, axis=1)
-    dot = vectors @ vectors.T
+    deltas = vectors - reference
+    lr = float(learning_rate) if learning_rate else 0.0
+    scaled = deltas if lr == 0.0 else deltas / lr
+    norms = np.linalg.norm(scaled, axis=1)
+    dot = scaled @ scaled.T
     denom = np.outer(norms, norms)
     cosine = np.divide(dot, denom, out=np.zeros_like(dot), where=denom != 0)
     cosine_similarity = []
@@ -286,7 +291,9 @@ class TriGuardFL(AggregatorBase):
             self.args.algorithm, updates, self.global_model, vector_form=True
         )
 
-        cosine_similarity = _median_cosine_similarities(local_model_vecs)
+        cosine_similarity = _median_cosine_similarities(
+            local_model_vecs, global_weights_vec, self.args.learning_rate
+        )
         malicious_candidate_index = _malicious_detection_candidate(
             cosine_similarity, self.cos_threshold
         )

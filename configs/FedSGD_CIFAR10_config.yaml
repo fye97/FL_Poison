@@ -175,7 +175,7 @@ defenses:
           random_seed: 2
     - defense: TriGuardFL
       defense_params:
-          cos_threshold: 0.0
+          cos_threshold: 1.0
           significance: 0.02
           discount: 0.9
           num_items_test: 512
