@@ -168,27 +168,33 @@ def vec2state(vector, model, plus=False, ignorebn=False, numpy=False):
     return a new state dict
     """
     curr_idx = 0
-    model_state_dict = deepcopy(model.state_dict())
+    state = model.state_dict()
     device = next(model.parameters()).device
     dtype = next(model.parameters()).dtype
     vec_tensor = _ensure_tensor(vector, device=device, dtype=dtype)
 
-    for key, value in model_state_dict.items():
-        if ignorebn:
-            if any(substring in key for substring in ['running_mean', 'running_var', 'num_batches_tracked']):
+    new_state = {}
+
+    with torch.no_grad():
+        for key, value in state.items():
+            if ignorebn and any(substring in key for substring in ['running_mean', 'running_var', 'num_batches_tracked']):
+                new_state[key] = value
                 continue
-        numel = value.numel()
-        param_tensor = vec_tensor[curr_idx:curr_idx + numel].reshape(value.shape)
 
-        if plus:
-            value.add_(param_tensor)  # in-place addition
-        else:
-            value.copy_(param_tensor)  # in-place assignment
-        curr_idx += numel
+            numel = value.numel()
+            param_tensor = vec_tensor[curr_idx:curr_idx + numel].view_as(value)
+
+            if plus:
+                new_state[key] = value + param_tensor
+            else:
+                new_state[key] = param_tensor.clone()
+
+            curr_idx += numel
+    
     if numpy:
-        return {key: value.detach().cpu().numpy() for key, value in model_state_dict.items()}
+        return {key: value.detach().cpu().numpy() for key, value in new_state.items()}
 
-    return model_state_dict
+    return new_state
 
 
 def state2vec(model_state_dict, ignorebn=False, numpy_flg=False, return_torch=False):
