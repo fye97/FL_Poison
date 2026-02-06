@@ -5,10 +5,35 @@ import torch
 # ======The two main APIs for model and 1-d numpy array conversion======
 
 def _ensure_tensor(vector, device=None, dtype=None):
+    """
+    Convert input vector (np.ndarray or torch.Tensor) into a torch.Tensor.
+    - If input is numpy and dtype is specified, try to cast numpy first (often avoids an extra copy later).
+    - If moving CPU->GPU, do it once via .to(device, dtype).
+    """
     if torch.is_tensor(vector):
         tensor = vector
     else:
-        tensor = torch.from_numpy(vector)
+        arr = np.asarray(vector)
+
+        if dtype is not None:
+            # map torch dtype -> numpy dtype
+            if dtype == torch.float32:
+                target = np.float32
+            elif dtype == torch.float64:
+                target = np.float64
+            elif dtype == torch.float16:
+                target = np.float16
+            elif dtype == torch.bfloat16:
+                # numpy doesn't have native bfloat16; keep as float32 then cast in torch
+                target = np.float32
+            else:
+                target = None
+
+            if target is not None and arr.dtype != target:
+                arr = arr.astype(target, copy=False)
+
+        tensor = torch.from_numpy(arr)
+
     if device is not None or dtype is not None:
         tensor = tensor.to(
             device=device if device is not None else tensor.device,
@@ -19,38 +44,56 @@ def _ensure_tensor(vector, device=None, dtype=None):
 
 def vec2model(vector, model, plus=False, ignorebn=False):
     """
-    in-place modification of model's parameters
-    Convert a 1d-numpy array back into a model
+    in-place modification of model's parameters/buffers
+    Convert a 1d vector back into a model
     """
-    curr_idx = 0
-    model_state_dict = model.state_dict()
     device = next(model.parameters()).device
     dtype = next(model.parameters()).dtype
     vec_tensor = _ensure_tensor(vector, device=device, dtype=dtype)
 
-    for key, value in model_state_dict.items():
-        if ignorebn:
-            if any(substring in key for substring in ['running_mean', 'running_var', 'num_batches_tracked']):
+    # ---- build or reuse cached layout ----
+    # layout element: (key, numel, shape)
+    # cache is keyed by ignorebn (because skip set differs)
+    cache_attr = "_vec2model_layout_ignorebn" if ignorebn else "_vec2model_layout"
+
+    layout = getattr(model, cache_attr, None)
+    if layout is None:
+        state = model.state_dict()
+        bn_skip = ('running_mean', 'running_var', 'num_batches_tracked')
+
+        built = []
+        for k, v in state.items():
+            if ignorebn and any(s in k for s in bn_skip):
                 continue
-        numel = value.numel()
-        param_tensor = vec_tensor[curr_idx:curr_idx + numel].reshape(value.shape)
+            built.append((k, v.numel(), v.shape))
+        layout = built
+        setattr(model, cache_attr, layout)
 
-        if plus:
-            value.copy_(value + param_tensor)  # in-place addition
-        else:
-            value.copy_(param_tensor)  # in-place assignment
-        curr_idx += numel
+    # ---- apply vector into model ----
+    curr_idx = 0
+    state = model.state_dict()  # lightweight handle; tensors are references
 
-    # Note that the below method are only suitable for CNN without batch normalization layer
-    # vector2parameter(vector, model)
+    with torch.no_grad():
+        for k, numel, shape in layout:
+            value = state[k]
+            param_tensor = vec_tensor[curr_idx:curr_idx + numel].view(shape)
+
+            if plus:
+                value.add_(param_tensor)
+            else:
+                value.copy_(param_tensor)
+
+            curr_idx += numel
 
 
-def model2vec(model):
+def model2vec(model, ignorebn=False, return_torch=False):
     """
-    convert the model's state dict to a 1d numpy array
+    Convert model state_dict to a 1D vector.
+
+    - return_torch=False (default): return np.ndarray on CPU (backward compatible)
+    - return_torch=True : return torch.Tensor (on the model's device), avoiding cpu/numpy conversion
     """
-    return state2vec(model.state_dict())
-    # return parameter2vector(model)
+    return state2vec(model.state_dict(), ignorebn=ignorebn, return_torch=return_torch)
 
 
 def add_vec2model(vector, model_template):
@@ -166,51 +209,80 @@ def vec2state(vector, model, plus=False, ignorebn=False, numpy=False):
     return a new state dict
     """
     curr_idx = 0
-    model_state_dict = deepcopy(model.state_dict())
+    state = model.state_dict()
     device = next(model.parameters()).device
     dtype = next(model.parameters()).dtype
     vec_tensor = _ensure_tensor(vector, device=device, dtype=dtype)
 
-    for key, value in model_state_dict.items():
-        if ignorebn:
-            if any(substring in key for substring in ['running_mean', 'running_var', 'num_batches_tracked']):
+    new_state = {}
+
+    with torch.no_grad():
+        for key, value in state.items():
+            if ignorebn and any(substring in key for substring in ['running_mean', 'running_var', 'num_batches_tracked']):
+                new_state[key] = value
                 continue
-        numel = value.numel()
-        param_tensor = vec_tensor[curr_idx:curr_idx + numel].reshape(value.shape)
 
-        if plus:
-            value.copy_(value + param_tensor)  # in-place addition
-        else:
-            value.copy_(param_tensor)  # in-place assignment
-        curr_idx += numel
+            numel = value.numel()
+            param_tensor = vec_tensor[curr_idx:curr_idx + numel].view_as(value)
+
+            if plus:
+                new_state[key] = value + param_tensor
+            else:
+                new_state[key] = param_tensor.clone()
+
+            curr_idx += numel
+    
     if numpy:
-        return {key: value.detach().cpu().numpy() for key, value in model_state_dict.items()}
+        return {key: value.detach().cpu().numpy() for key, value in new_state.items()}
 
-    return model_state_dict
+    return new_state
 
 
 def state2vec(model_state_dict, ignorebn=False, numpy_flg=False, return_torch=False):
     """
-    Convert a state dict to a concatenated 1D numpy array.
+    Convert a state dict to a concatenated 1D vector.
+    - If numpy_flg=True: assume values are numpy arrays (or array-like) and return np.ndarray
+    - Else: assume values are torch tensors and return either torch.Tensor (return_torch=True)
+      or np.ndarray (return_torch=False)
     """
-    # Collect all the tensors first
+    bn_skip = ('running_mean', 'running_var', 'num_batches_tracked')
+
     if numpy_flg:
-        arrays = [
-            value.flatten()
-            for name, value in model_state_dict.items()
-            if (True if not ignorebn else all(substring not in name for substring in ['running_mean', 'running_var', 'num_batches_tracked']))
-        ]
+        arrays = []
+        for name, value in model_state_dict.items():
+            if ignorebn and any(s in name for s in bn_skip):
+                continue
+            arrays.append(np.asarray(value).reshape(-1))
         return np.concatenate(arrays) if arrays else np.array([])
 
-    tensors = [
-        i.detach().reshape(-1)
-        for name, i in model_state_dict.items()
-        if (True if not ignorebn else all(substring not in name for substring in ['running_mean', 'running_var', 'num_batches_tracked']))
-    ]
-    if not tensors:
+    # ---- torch path: pre-allocate and copy ----
+    # Find device/dtype from first eligible tensor
+    first = None
+    total = 0
+    items = []  # (name, tensor, numel)
+    for name, t in model_state_dict.items():
+        if ignorebn and any(s in name for s in bn_skip):
+            continue
+        if not torch.is_tensor(t):
+            # be defensive: skip or convert
+            t = torch.as_tensor(t)
+        if first is None:
+            first = t
+        n = t.numel()
+        total += n
+        items.append((t, n))
+
+    if total == 0:
         return torch.empty(0) if return_torch else np.array([])
-    vec = torch.cat(tensors)
+
+    vec = torch.empty(total, device=first.device, dtype=first.dtype)
+
+    curr = 0
+    with torch.no_grad():
+        for t, n in items:
+            vec[curr:curr + n].copy_(t.detach().reshape(-1))
+            curr += n
+
     if return_torch:
         return vec
-    # Concatenate the list of arrays at once
     return vec.cpu().numpy()
