@@ -40,8 +40,24 @@ class Server(Worker):
     def collect_updates(self, global_epoch):
         self.global_epoch = global_epoch
         # get the client update from clients
-        self.client_updates = np.array(
-            [client.update for client in self.clients])
+        updates = [client.update for client in self.clients]
+        if not updates:
+            self.client_updates = np.empty((0, 0), dtype=np.float32)
+            return
+        first = np.asarray(updates[0]).reshape(-1)
+        num_clients = len(updates)
+        num_params = first.size
+        stacked = np.empty((num_clients, num_params), dtype=first.dtype)
+        stacked[0] = first
+        for idx, update in enumerate(updates[1:], start=1):
+            arr = np.asarray(update).reshape(-1)
+            if arr.size != num_params:
+                raise ValueError(
+                    f"Inconsistent update size: client {idx} has {arr.size}, expected {num_params}")
+            if arr.dtype != first.dtype:
+                arr = arr.astype(first.dtype, copy=False)
+            stacked[idx] = arr
+        self.client_updates = stacked
 
     def aggregation(self):
         # aggregate gradient (for fedsgd), model parameters (for fedavg), and return the aggregated model parameters
