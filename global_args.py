@@ -61,7 +61,7 @@ def read_args():
                         type=int, help="the attack start epoch")
     parser.add_argument('-attparam', '--attparam', type=float,
                         help='scale for omniscient model poisoning attack, IPM,ALIE,MinMax,MinSum,Fang')
-    parser.add_argument('-def', '--defense',
+    parser.add_argument('-def', '-defense', '--defense',
                         choices=all_aggregators, help="Defenses options")
     parser.add_argument('-num_adv', '--num_adv', type=float,
                         help='the proportion (float < 1) or number (int>1) of adversaries')

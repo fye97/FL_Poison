@@ -12,6 +12,8 @@ from aggregators.aggregator_utils import prepare_updates, wrapup_aggregated_grad
 from datapreprocessor.data_utils import subset_by_idx
 from fl.models.model_utils import vec2model
 
+from tqdm import tqdm
+
 
 class _ServerEvaluator:
     def __init__(self, args, dataset: Dataset, indices: np.ndarray, batch_size: int):
@@ -137,19 +139,18 @@ def _median_cosine_similarities(vectors: np.ndarray) -> List[float]:
 
 
 def _malicious_detection_candidate(
-    cosine_similar: List[float], chosen_users: List[int], cos_threshold: float
-) -> Tuple[List[int], List[int]]:
+    cosine_similar: List[float], cos_threshold: float
+) -> List[int]:
     if cosine_similar is None or len(cosine_similar) == 0:
-        return [], []
+        return []
     cosine_arr = np.asarray(cosine_similar, dtype=float)
     avg_cosine_similarity = np.mean(cosine_arr)
     malicious_indices = np.where(
         (cosine_arr < cos_threshold) & (cosine_arr < avg_cosine_similarity)
     )[0].tolist()
     if len(malicious_indices) == 0:
-        return [], []
-    malicious_ids = [chosen_users[i] for i in malicious_indices]
-    return malicious_ids, malicious_indices
+        return []
+    return malicious_indices
 
 
 def _perform_t_test(
@@ -171,7 +172,7 @@ def _perform_t_test(
 def _client_detection(
     list_acc: List[List[float]],
     list_loss: List[List[float]],
-    chosen_users: List[int],
+    malicious_candidates: List[int],
     significance: float,
 ) -> List[int]:
     if not list_loss or len(list_loss) < 2:
@@ -193,8 +194,7 @@ def _client_detection(
                 malicious_indices_rel.append(i)
     if not malicious_indices_rel:
         return []
-    malicious_ids = [chosen_users[i] for i in malicious_indices_rel]
-    return malicious_ids
+    return [malicious_candidates[i] for i in malicious_indices_rel]
 
 
 def _client_reputation(
@@ -202,27 +202,26 @@ def _client_reputation(
     malicious: List[int],
     alpha: np.ndarray,
     beta: np.ndarray,
-    chosen_users: List[int],
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     alpha_last = np.array(alpha, copy=True)
     beta_last = np.array(beta, copy=True)
     alpha_update = alpha_last.copy()
     beta_update = beta_last.copy()
 
-    num_chosen = len(chosen_users)
-    rep = np.ones(num_chosen, dtype=float)
+    num_clients = len(alpha_update)
+    rep = np.ones(num_clients, dtype=float)
     malicious_set = set(malicious or [])
 
-    for i, uid in enumerate(chosen_users):
+    for uid in range(num_clients):
         if uid in malicious_set:
             alpha_update[uid] = discount * alpha_last[uid]
             beta_update[uid] = discount * beta_last[uid] + 1.0
-            rep[i] = 0.0
+            rep[uid] = 0.0
         else:
             alpha_update[uid] = discount * alpha_last[uid] + 1.0
             beta_update[uid] = discount * beta_last[uid]
             denom = alpha_update[uid] + beta_update[uid]
-            rep[i] = (alpha_update[uid] / denom) if denom > 0 else 0.0
+            rep[uid] = (alpha_update[uid] / denom) if denom > 0 else 0.0
     return rep, alpha_update, beta_update
 
 
@@ -246,7 +245,7 @@ class TriGuardFL(AggregatorBase):
     def __init__(self, args, **kwargs):
         super().__init__(args)
         self.default_defense_params = {
-            "cos_threshold": 1.01,
+            "cos_threshold": 0.0,
             "significance": 0.02,
             "discount": 0.9,
             "num_items_test": 512,
@@ -283,15 +282,16 @@ class TriGuardFL(AggregatorBase):
             self.alphas = np.ones(num_clients, dtype=float)
             self.betas = np.ones(num_clients, dtype=float)
 
-        chosen_users = list(range(num_clients))
         local_model_vecs, _ = prepare_updates(
             self.args.algorithm, updates, self.global_model, vector_form=True
         )
 
         cosine_similarity = _median_cosine_similarities(local_model_vecs)
-        malicious_candidate, malicious_candidate_index = _malicious_detection_candidate(
-            cosine_similarity, chosen_users, self.cos_threshold
+        malicious_candidate_index = _malicious_detection_candidate(
+            cosine_similarity, self.cos_threshold
         )
+        print("\nCosine Similarity:", cosine_similarity)
+        print("Detected Potential Attackers:", malicious_candidate_index)
 
         w_locals_malicious_candidate = [local_model_vecs[i] for i in malicious_candidate_index]
         w_locals_benign_candidate = [
@@ -303,9 +303,9 @@ class TriGuardFL(AggregatorBase):
         w_glob_benign_candidate = np.mean(np.stack(w_locals_benign_candidate, axis=0), axis=0)
 
         list_acc_local, list_loss_local = [], []
-        for c in range(len(malicious_candidate) + 1):
+        for c in range(len(malicious_candidate_index) + 1):
             net_server_local = deepcopy(self.global_model)
-            if c < len(malicious_candidate):
+            if c < len(malicious_candidate_index):
                 vec2model(w_locals_malicious_candidate[c], net_server_local)
             else:
                 vec2model(w_glob_benign_candidate, net_server_local)
@@ -314,11 +314,14 @@ class TriGuardFL(AggregatorBase):
             list_loss_local.append(loss_total)
 
         malicious = _client_detection(
-            list_acc_local, list_loss_local, malicious_candidate, self.significance
+            list_acc_local, list_loss_local, malicious_candidate_index, self.significance
         )
         rep, self.alphas, self.betas = _client_reputation(
-            self.discount, malicious, self.alphas, self.betas, chosen_users
+            self.discount, malicious, self.alphas, self.betas
         )
+
+        print("Detected Attackers:", malicious)
+        print('Reputation:', rep)
 
         aggregated_model_vec = _weighted_average_vectors(local_model_vecs, rep)
         aggregated_grad = aggregated_model_vec - global_weights_vec
