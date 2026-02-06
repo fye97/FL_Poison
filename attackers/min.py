@@ -1,8 +1,9 @@
 import numpy as np
-from global_utils import actor
-from attackers.pbases.mpbase import MPBase
+import torch
 from attackers import attacker_registry
+from attackers.pbases.mpbase import MPBase
 from fl.client import Client
+from global_utils import actor
 
 
 class MinBase(MPBase, Client):
@@ -54,8 +55,15 @@ def get_metrics(metric_type):
 def Min(clients, type, dev_type, gamma_init, stop_threshold):
     metric = get_metrics(type)
     # get benign updates and the mean of it
-    benign_update = np.array(
-        [i.update for i in clients if i.category == "benign"])
+    benign_list = []
+    for client in clients:
+        if client.category != "benign":
+            continue
+        update = client.update
+        if torch.is_tensor(update):
+            update = update.detach().cpu().numpy()
+        benign_list.append(update)
+    benign_update = np.array(benign_list)
     benign_mean = np.mean(benign_update, 0)
 
     # select the type of deviation unit for subsequent perturbation, unit_vec by default

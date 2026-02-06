@@ -6,6 +6,7 @@ class AggregatorBase():
 
     def __init__(self, args, **kwargs):
         self.args = args
+        self.use_torch = False
 
     def update_and_set_attr(self):
         """

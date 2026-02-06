@@ -71,19 +71,22 @@ class EdgeCase(MPBase, DPBase, Client):
         super().step(optimizer)
 
         # get the updated model
-        model_update = model2vec(self.model)
-        w_diff = model_update - self.global_weights_vec
+        model_update = model2vec(self.model, return_torch=False)
+        global_vec = self.global_weights_vec
+        if torch.is_tensor(global_vec):
+            global_vec = global_vec.detach().cpu().numpy()
+        w_diff = model_update - global_vec
 
         # PGD projection
         if self.projection_type == "l_inf":
             smaller_idx = np.less(w_diff, -self.epsilon)
             larger_idx = np.greater(w_diff, self.epsilon)
-            model_update[smaller_idx] = self.global_weights_vec[smaller_idx] - self.epsilon
-            model_update[larger_idx] = self.global_weights_vec[larger_idx] + self.epsilon
+            model_update[smaller_idx] = global_vec[smaller_idx] - self.epsilon
+            model_update[larger_idx] = global_vec[larger_idx] + self.epsilon
         elif self.projection_type == "l_2":
             w_diff_norm = np.linalg.norm(w_diff)
             if (cur_local_epoch % self.l2_proj_frequency == 0 or cur_local_epoch == self.local_epochs - 1) and w_diff_norm > self.epsilon:
-                model_update = self.global_weights_vec + self.epsilon * w_diff / w_diff_norm
+                model_update = global_vec + self.epsilon * w_diff / w_diff_norm
 
         # load the model_update to the model after PGD projection
         vec2model(model_update, self.model)

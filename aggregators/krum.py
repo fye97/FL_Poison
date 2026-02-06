@@ -1,3 +1,4 @@
+import torch
 from aggregators import aggregator_registry
 from aggregators.aggregatorbase import AggregatorBase
 from aggregators.aggregator_utils import L2_distances, krum_compute_scores
@@ -17,12 +18,31 @@ class Krum(AggregatorBase):
         """
         self.default_defense_params = {"enable_check": False}
         self.update_and_set_attr()
+        self.use_torch = True
 
     def aggregate(self, updates, **kwargs):
         return krum(updates, self.args.num_adv, return_index=False, enable_check=self.enable_check)
 
 
 def krum(updates, num_byzantine=0, return_index=False, enable_check=False):
+    if torch.is_tensor(updates):
+        num_clients = updates.shape[0]
+        if enable_check:
+            if 2 * num_byzantine + 2 >= num_clients:
+                raise ValueError(
+                    f"num_byzantine should be meet 2f+2 < n, got 2*{num_byzantine}+2 >= {num_clients}."
+                )
+        # calculate euclidean distance between clients
+        distances = torch.cdist(updates, updates, p=2)
+        distances.fill_diagonal_(float("inf"))
+        k = num_clients - num_byzantine - 1
+        closest, _ = torch.topk(distances, k=k, dim=1, largest=False)
+        scores = torch.sum(closest, dim=1)
+        min_idx = torch.argmin(scores).item()
+        if return_index:
+            return min_idx
+        return updates[min_idx].clone()
+
     num_clients = len(updates)
     if enable_check:
         if 2 * num_byzantine + 2 >= num_clients:

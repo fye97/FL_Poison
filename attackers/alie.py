@@ -1,9 +1,10 @@
 import numpy as np
-from scipy.stats import norm
-from fl.client import Client
-from attackers.pbases.mpbase import MPBase
-from global_utils import actor
+import torch
 from attackers import attacker_registry
+from attackers.pbases.mpbase import MPBase
+from fl.client import Client
+from global_utils import actor
+from scipy.stats import norm
 
 
 @attacker_registry
@@ -31,7 +32,14 @@ class ALIE(MPBase, Client):
             z_max = norm.ppf(cdf_value)
         else:
             z_max = self.z_max
-        benign_updates = [i.update for i in clients if i.category == "benign"]
+        benign_updates = []
+        for client in clients:
+            if client.category != "benign":
+                continue
+            update = client.update
+            if torch.is_tensor(update):
+                update = update.detach().cpu().numpy()
+            benign_updates.append(update)
         mean = np.mean(benign_updates, axis=0)
         std = np.std(benign_updates, axis=0)
         attack_vec = mean + z_max * std

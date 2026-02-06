@@ -1,8 +1,9 @@
 import numpy as np
-from global_utils import actor
-from attackers.pbases.mpbase import MPBase
+import torch
 from attackers import attacker_registry
+from attackers.pbases.mpbase import MPBase
 from fl.client import Client
+from global_utils import actor
 
 
 @attacker_registry
@@ -23,5 +24,7 @@ class Mimic(MPBase, Client):
         assert self.choice < len(
             clients), f"choice {self.choice} is out of range"
         attack_vec = clients[self.choice].update
+        if torch.is_tensor(attack_vec):
+            attack_vec = attack_vec.detach().cpu().numpy()
         # repeat attack vector for all attackers
         return np.tile(attack_vec, (self.args.num_adv, 1))

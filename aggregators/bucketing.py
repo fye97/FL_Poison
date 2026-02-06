@@ -1,8 +1,10 @@
 import math
 import random
-from aggregators.aggregatorbase import AggregatorBase
+
 import numpy as np
+import torch
 from aggregators import aggregator_registry
+from aggregators.aggregatorbase import AggregatorBase
 
 
 @aggregator_registry
@@ -24,13 +26,29 @@ class Bucketing(AggregatorBase):
         self.a_aggregator = aggregator_registry[self.selected_aggregator](
             args)
         self.algorithm = "FedSGD"
+        self.use_torch = True
 
     def aggregate(self, updates, **kwargs):
-        random.shuffle(updates)
+        if torch.is_tensor(updates):
+            num_clients = updates.shape[0]
+            perm = torch.randperm(num_clients, device=updates.device)
+            shuffled = updates[perm]
+            num_buckets = math.ceil(num_clients / self.bucket_size)
+            buckets = [shuffled[i:i + self.bucket_size]
+                       for i in range(0, num_clients, self.bucket_size)]
+            bucket_avg_updates = torch.stack(
+                [torch.mean(b, dim=0) for b in buckets], dim=0)
+            if not getattr(self.a_aggregator, "use_torch", False):
+                bucket_avg_updates = bucket_avg_updates.detach().cpu().numpy()
+            return self.a_aggregator.aggregate(bucket_avg_updates)
+
+        updates = np.asarray(updates)
+        perm = np.random.permutation(len(updates))
+        shuffled = updates[perm]
         num_buckets = math.ceil(
-            len(updates) / self.bucket_size)
-        buckets = [updates[i:i + self.bucket_size]
-                   for i in range(0, len(updates), self.bucket_size)]
+            len(shuffled) / self.bucket_size)
+        buckets = [shuffled[i:i + self.bucket_size]
+                   for i in range(0, len(shuffled), self.bucket_size)]
         bucket_avg_updates = np.array(
             [np.mean(buckets[bucket_id], axis=0) for bucket_id in range(num_buckets)])
 

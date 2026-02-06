@@ -1,7 +1,8 @@
+import numpy as np
+import torch
+from aggregators import aggregator_registry
 from aggregators.aggregatorbase import AggregatorBase
 from aggregators.aggregator_utils import L2_distances, krum_compute_scores
-import numpy as np
-from aggregators import aggregator_registry
 
 
 @aggregator_registry
@@ -20,6 +21,7 @@ class MultiKrum(AggregatorBase):
         self.default_defense_params = {
             "avg_percentage": 0.2, "enable_check": False}
         self.update_and_set_attr()
+        self.use_torch = True
 
     def aggregate(self, updates, **kwargs):
         return multi_krum(
@@ -30,6 +32,22 @@ def multi_krum(updates, num_byzantine, avg_percentage, enable_check=False):
     """
     m_avg: select smallest m scores for averaging
     """
+    if torch.is_tensor(updates):
+        num_clients = updates.shape[0]
+        m_avg = int(avg_percentage * num_clients)
+        if enable_check:
+            if num_clients <= 2 * num_byzantine+2:
+                raise ValueError(
+                    f"num_byzantine should be meet 2f+2 < n, got 2*{num_byzantine}+2 >= {num_clients}."
+                )
+        distances = torch.cdist(updates, updates, p=2)
+        distances.fill_diagonal_(float("inf"))
+        k = num_clients - num_byzantine - 1
+        closest, _ = torch.topk(distances, k=k, dim=1, largest=False)
+        scores = torch.sum(closest, dim=1)
+        idx = torch.topk(scores, k=m_avg, largest=False).indices
+        return torch.mean(updates[idx], dim=0)
+
     num_clients = len(updates)
     m_avg = int(avg_percentage * num_clients)
     if enable_check:

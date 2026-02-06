@@ -1,11 +1,13 @@
 from copy import deepcopy
-from sklearn.metrics.pairwise import cosine_similarity
+
+import numpy as np
+import torch
+from aggregators import aggregator_registry
 from aggregators.aggregator_utils import prepare_grad_updates, wrapup_aggregated_grads
 from aggregators.aggregatorbase import AggregatorBase
-import numpy as np
 from datapreprocessor.data_utils import dataset_class_indices, subset_by_idx
 from fl.client import Client
-from aggregators import aggregator_registry
+from sklearn.metrics.pairwise import cosine_similarity
 
 
 @aggregator_registry
@@ -59,8 +61,11 @@ class FLTrust(AggregatorBase):
         self.server_client.fetch_updates(benign_flag=True)
 
         # 2. get gradient update of server model
-        raw_shape = self.server_client.update.shape
-        root_grad_update = prepare_grad_updates(self.args.algorithm,  self.server_client.update.reshape(
+        root_update = self.server_client.update
+        if torch.is_tensor(root_update):
+            root_update = root_update.detach().cpu().numpy()
+        raw_shape = root_update.shape
+        root_grad_update = prepare_grad_updates(self.args.algorithm,  root_update.reshape(
             1, -1), self.global_model)
         root_grad_update.reshape(raw_shape)
 

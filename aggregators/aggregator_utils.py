@@ -28,9 +28,10 @@ def krum_compute_scores(distances, i, n, f):
 def prepare_grad_updates(algorithm, updates, global_model):
 
     num_updates = len(updates)  # equal to num_clients
+    global_vec = model2vec(global_model, return_torch=False)
     # gradient_updates
     gradient_updates = updates if "FedSGD" or "FedOpt" in algorithm else np.array(
-            [updates[cid] - model2vec(global_model) for cid in range(num_updates)])
+            [updates[cid] - global_vec for cid in range(num_updates)])
     
     return gradient_updates
    
@@ -42,16 +43,17 @@ def prepare_updates(algorithm, updates, global_model, vector_form=True):
     gradient_updates: vector-form (pseudo-)gradient updates for FedSGD, FedOpt
     """
     num_updates = len(updates)  # equal to num_clients
+    global_vec = model2vec(global_model, return_torch=False)
     # gradient_updates
     if algorithm == 'FedAvg':
         vec_updates = updates
         gradient_updates = np.array(
-            [updates[cid] - model2vec(global_model) for cid in range(num_updates)])
+            [updates[cid] - global_vec for cid in range(num_updates)])
 
     elif "FedSGD" or "FedOpt" in algorithm:
         gradient_updates = updates
         vec_updates = np.array(
-            [model2vec(global_model) + updates[cid] for cid in range(num_updates)])
+            [global_vec + updates[cid] for cid in range(num_updates)])
 
     if vector_form:
         # vector_form return 1d np array vector model parameters
@@ -81,7 +83,7 @@ def wrapup_aggregated_grads(benign_grad_updates, algorithm, global_model, aggreg
     if algorithm == 'FedAvg':
         aggregated_model = add_vec2model(
             aggregated_gradient, global_model)
-        return model2vec(aggregated_model)
+        return model2vec(aggregated_model, return_torch=False)
     else:
         return aggregated_gradient
 

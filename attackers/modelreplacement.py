@@ -46,8 +46,11 @@ class ModelReplacement(MPBase, DPBase, Client):
         # a L_class + (1-a) L_ano
         """
         # constrain: cosine distance between model2vec(self.model) and self.global_weights_vec
-        cosine_dist = cosine_distances(model2vec(self.model).reshape(
-            1, -1), self.global_weights_vec.reshape(1, -1))
+        global_vec = self.global_weights_vec
+        if torch.is_tensor(global_vec):
+            global_vec = global_vec.detach().cpu().numpy()
+        cosine_dist = cosine_distances(model2vec(self.model, return_torch=False).reshape(
+            1, -1), global_vec.reshape(1, -1))
         return self.alpha * torch.nn.CrossEntropyLoss()(y_pred, y_true) + (1-self.alpha) * torch.from_numpy(cosine_dist).to(self.args.device)
 
     def non_omniscient(self):

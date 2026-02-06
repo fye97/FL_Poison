@@ -1,11 +1,12 @@
 from copy import deepcopy
 
-from global_utils import actor
-from attackers.pbases.mpbase import MPBase
 import numpy as np
+import torch
 from aggregators.krum import krum
 from attackers import attacker_registry
+from attackers.pbases.mpbase import MPBase
 from fl.client import Client
+from global_utils import actor
 
 
 @attacker_registry
@@ -28,14 +29,24 @@ class FangAttack(MPBase, Client):
     def omniscient(self, clients):
         # Here we use the fetched update for compatibility with various FL algorithms, instead of referring directly to weights or gradients
         # 1. get the mean of the f attackers' current before-attack weights/model, and estimate the update direction via sign(last_global_model - mean of current attacks' weights)
-        before_attack_update = np.array(
-            [c.update for c in clients if c.category == "attacker"])
+        attacker_updates_list = []
+        for client in clients:
+            if client.category != "attacker":
+                continue
+            update = client.update
+            if torch.is_tensor(update):
+                update = update.detach().cpu().numpy()
+            attacker_updates_list.append(update)
+        before_attack_update = np.array(attacker_updates_list)
         attacker_updates = np.zeros(
             (self.args.num_adv, len(self.update)), dtype=np.float32)
         est_direction = np.sign(np.mean(before_attack_update, axis=0))
 
         # global_weights_vec for fedavg comes from paper, 0 for fedsgd comes from fldetector code
-        perturbation_base = self.global_weights_vec if self.args.algorithm == "FedAvg" else 0
+        global_vec = self.global_weights_vec
+        if torch.is_tensor(global_vec):
+            global_vec = global_vec.detach().cpu().numpy()
+        perturbation_base = global_vec if self.args.algorithm == "FedAvg" else 0
 
         # 2. find the lambda value for the crafted attacker[0]'s weights to be selected by Krum via adding malicious supporters
         simulation_attack_number = 1

@@ -32,9 +32,9 @@ class FLAME(AggregatorBase):
         self.add_noise2model(self.gamma * median_norm, aggregated_model)
 
         if self.args.algorithm == 'FedAvg':
-            return model2vec(aggregated_model)
+            return model2vec(aggregated_model, return_torch=False)
         else:
-            return model2vec(aggregated_model) - model2vec(self.global_model)
+            return model2vec(aggregated_model, return_torch=False) - model2vec(self.global_model, return_torch=False)
 
     def cosine_clustering(self, model_updates):
         """

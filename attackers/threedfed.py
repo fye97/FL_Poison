@@ -124,8 +124,14 @@ class ThreeDFed(MPBase, Client):
 
         # get indicator feedback
         for cid in range(len(clients)):
-            feedbacks.append(clients[cid].update[indicator_indices] /
-                             clients[cid].global_weights_vec[indicator_indices])
+            update_vec = clients[cid].update
+            if torch.is_tensor(update_vec):
+                update_vec = update_vec.detach().cpu().numpy()
+            global_vec = clients[cid].global_weights_vec
+            if torch.is_tensor(global_vec):
+                global_vec = global_vec.detach().cpu().numpy()
+            feedbacks.append(update_vec[indicator_indices] /
+                             global_vec[indicator_indices])
 
         # mark accept, clipped, rejected for each client for subsequent adaptive tuning
         threshold = 1e-4 if "MNIST" in self.args.dataset else 1e-5

@@ -43,7 +43,13 @@ class Client(Worker):
         self.local_epochs = self.algorithm.init_local_epochs()
 
     def load_global_model(self, global_weights_vec):
-        self.global_weights_vec = global_weights_vec
+        if torch.is_tensor(global_weights_vec):
+            vec = global_weights_vec
+        else:
+            vec = torch.as_tensor(global_weights_vec)
+        param = next(self.model.parameters())
+        vec = vec.to(device=param.device, dtype=param.dtype)
+        self.global_weights_vec = vec
         # load global parameters
         vec2model(self.global_weights_vec, self.model)
 
@@ -71,6 +77,10 @@ class Client(Worker):
             self.step(optimizer, cur_local_epoch=epoch)
         self.lr_scheduler.step()
 
+        if acc_values and torch.is_tensor(acc_values[0]):
+            acc_mean = torch.stack(acc_values).mean().item()
+            loss_mean = torch.stack(loss_values).mean().item()
+            return acc_mean, loss_mean
         return avg_value(acc_values), avg_value(loss_values)
         # client side debug usage
         # if "data_poisoning" in self.attributes:

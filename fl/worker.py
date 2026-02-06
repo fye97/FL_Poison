@@ -46,10 +46,9 @@ class Worker:
         loss = criterion_fn(pred_probs, targets)
         loss.backward()
         predicted = torch.argmax(pred_probs.data, 1)
-        train_acc = (predicted == targets).sum().item()
-        train_loss = loss.item()
-        train_loss /= len(images)
-        train_acc /= len(images)
+        correct = (predicted == targets).sum()
+        train_acc = correct / len(images)
+        train_loss = loss / len(images)
         return train_acc, train_loss
 
     def step(self, optimizer, **kwargs):
@@ -58,8 +57,12 @@ class Worker:
     def test(self, model, test_loader, imbalanced=False):
         model.eval()
         tail_cls_from = self.args.tail_cls_from if imbalanced else 0
-        overall_correct, test_loss, num_samples = 0, 0, 0
-        rest_correct, rest_samples = 0, 0
+        device = next(model.parameters()).device
+        overall_correct = torch.zeros((), device=device)
+        test_loss = torch.zeros((), device=device)
+        num_samples = torch.zeros((), device=device)
+        rest_correct = torch.zeros((), device=device)
+        rest_samples = torch.zeros((), device=device)
 
         with torch.no_grad():
             for images, targets in test_loader:
@@ -68,22 +71,23 @@ class Worker:
                 pred_probs = model(images)
                 loss = self.criterion_fn(pred_probs, targets)
                 predicted = torch.argmax(pred_probs.data, 1)
-                num_samples += len(targets)
-                overall_correct += (predicted == targets).sum().item()
-                test_loss += loss.item()
+                num_samples += targets.numel()
+                overall_correct += (predicted == targets).sum()
+                test_loss += loss
 
                 if imbalanced:
                     # calculate the rest class accuracy, from 5-9 for 10 classes
                     rest_mask = targets >= tail_cls_from
                     rest_correct += (predicted[rest_mask]
-                                     == targets[rest_mask]).sum().item()
-                    rest_samples += rest_mask.sum().item()
+                                     == targets[rest_mask]).sum()
+                    rest_samples += rest_mask.sum()
 
-        overall_accuracy = overall_correct / num_samples
-        test_loss /= num_samples
+        overall_accuracy = (overall_correct / num_samples).item()
+        test_loss = (test_loss / num_samples).item()
 
         if imbalanced:
-            rest_accuracy = rest_correct / rest_samples if rest_samples > 0 else 0
+            rest_samples_val = rest_samples.item()
+            rest_accuracy = (rest_correct / rest_samples).item() if rest_samples_val > 0 else 0
             return overall_accuracy, rest_accuracy, test_loss
 
         return overall_accuracy, test_loss

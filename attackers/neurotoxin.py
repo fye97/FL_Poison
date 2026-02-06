@@ -83,12 +83,15 @@ class Neurotoxin(MPBase, DPBase, Client):
         self.apply_grad_mask(self.model.parameters(), self.grad_mask_vec)
         super().step(optimizer)
         # gradient norm clipping
-        model_params_vec = model2vec(self.model)
-        weight_diff = model_params_vec - self.global_weights_vec
+        model_params_vec = model2vec(self.model, return_torch=False)
+        global_vec = self.global_weights_vec
+        if torch.is_tensor(global_vec):
+            global_vec = global_vec.detach().cpu().numpy()
+        weight_diff = model_params_vec - global_vec
         scale = np.minimum(1, self.norm_threshold /
                            np.linalg.norm(weight_diff))
         weight_diff *= scale
-        vec2model(self.global_weights_vec + weight_diff,
+        vec2model(global_vec + weight_diff,
                   self.model)
 
     def apply_grad_mask(self, parameters, grad_mask_vec):

@@ -1,8 +1,9 @@
-from global_utils import actor
-from attackers.pbases.mpbase import MPBase
 import numpy as np
+import torch
 from attackers import attacker_registry
+from attackers.pbases.mpbase import MPBase
 from fl.client import Client
+from global_utils import actor
 
 
 @attacker_registry
@@ -26,8 +27,15 @@ class IPM(MPBase, Client):
     def omniscient(self, clients):
         if self.attack_start_epoch is not None and self.global_epoch <= 2 + self.attack_start_epoch:  # 62 start attack
             return None
-        mean = np.mean(
-            [i.update for i in clients if i.category == "benign"], axis=0)
+        benign_updates = []
+        for client in clients:
+            if client.category != "benign":
+                continue
+            update = client.update
+            if torch.is_tensor(update):
+                update = update.detach().cpu().numpy()
+            benign_updates.append(update)
+        mean = np.mean(benign_updates, axis=0)
         attack_vec = - self.scaling_factor * mean
         # repeat attack vector for all attackers
         return np.tile(attack_vec, (self.args.num_adv, 1))

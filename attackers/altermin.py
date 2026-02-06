@@ -80,11 +80,11 @@ class AlterMin(MPBase, DPBase, Client):
         # optimize the target objective if malicious loss is not zero yet
         if asr_loss > 0.0:
             # 3. get weights before and after malicious training
-            pre_train_weights = copy.deepcopy(model2vec(self.model))
+            pre_train_weights = copy.deepcopy(model2vec(self.model, return_torch=False))
             # malicious training with adversarial objectives on poisoned data
             super().local_training(train_loader=self.cycle(
                 self.poisoned_loader), local_epochs=self.malicous_epochs)
-            post_train_weights = copy.deepcopy(model2vec(self.model))
+            post_train_weights = copy.deepcopy(model2vec(self.model, return_torch=False))
 
             # 5. check target objective condition. If not, do targeted objective optimization, explicit boosting
             boosted_weights = pre_train_weights + self.boosting_factor * \
@@ -96,8 +96,11 @@ class AlterMin(MPBase, DPBase, Client):
     def stealth_loss(self, y_pred, y_true):
         """rewrite the criterion function to include the distance loss
         """
+        global_vec = self.global_weights_vec
+        if torch.is_tensor(global_vec):
+            global_vec = global_vec.detach().cpu().numpy()
         distance_loss = np.linalg.norm(
-            model2vec(self.model) - self.global_weights_vec, 2)
+            model2vec(self.model, return_torch=False) - global_vec, 2)
         return torch.nn.CrossEntropyLoss()(y_pred, y_true) + self.rho * distance_loss
 
     def client_test(self, model=None, test_dataset=None, poison_epochs=False):

@@ -45,11 +45,13 @@ def vec2model(vector, model, plus=False, ignorebn=False):
     # vector2parameter(vector, model)
 
 
-def model2vec(model):
+def model2vec(model, return_torch=True):
     """
-    convert the model's state dict to a 1d numpy array
+    convert the model's state dict to a 1d vector
+    return_torch=True returns a torch tensor on the model device.
+    return_torch=False returns a numpy array on CPU.
     """
-    return state2vec(model.state_dict())
+    return state2vec(model.state_dict(), return_torch=return_torch)
     # return parameter2vector(model)
 
 
@@ -156,7 +158,7 @@ def ol_from_vector(vector, model_template, flatten=True, return_type='dict'):
 
 
 def ol_from_model(model, flatten=True, return_type='dict'):
-    return ol_from_vector(model2vec(model), model,
+    return ol_from_vector(model2vec(model, return_torch=False), model,
                           flatten=flatten, return_type=return_type)
 
 
