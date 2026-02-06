@@ -75,8 +75,9 @@ def fl_run(args):
         epoch_msg += "\t".join(
             [f"{key}: {value:.4f}" for key, value in test_stats.items()])
         args.logger.info(epoch_msg)
-        # clear memory
-        gc.collect()
+        # clear memory (low-frequency to reduce overhead)
+        if (global_epoch + 1) % 20 == 0:
+            gc.collect()
 
     if args.record_time:
         report_time(clients, the_server)
