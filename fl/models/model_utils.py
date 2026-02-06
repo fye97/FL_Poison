@@ -28,21 +28,23 @@ def vec2model(vector, model, plus=False, ignorebn=False):
     dtype = next(model.parameters()).dtype
     vec_tensor = _ensure_tensor(vector, device=device, dtype=dtype)
 
-    for key, value in model_state_dict.items():
-        if ignorebn:
-            if any(substring in key for substring in ['running_mean', 'running_var', 'num_batches_tracked']):
-                continue
-        numel = value.numel()
-        param_tensor = vec_tensor[curr_idx:curr_idx + numel].reshape(value.shape)
+    with torch.no_grad():
+        for key, value in model_state_dict.items():
+            if ignorebn:
+                if any(substring in key for substring in ['running_mean', 'running_var', 'num_batches_tracked']):
+                    continue
 
-        if plus:
-            value.copy_(value + param_tensor)  # in-place addition
-        else:
-            value.copy_(param_tensor)  # in-place assignment
-        curr_idx += numel
+            numel = value.numel()
+            param_tensor = vec_tensor[curr_idx:curr_idx + numel].reshape(value.shape)
 
-    # Note that the below method are only suitable for CNN without batch normalization layer
-    # vector2parameter(vector, model)
+            if plus:
+                value.add_(param_tensor)  # in-place addition
+            else:
+                value.copy_(param_tensor)  # in-place assignment
+            curr_idx += numel
+
+        # Note that the below method are only suitable for CNN without batch normalization layer
+        # vector2parameter(vector, model)
 
 
 def model2vec(model):
