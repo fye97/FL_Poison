@@ -28,10 +28,14 @@ def krum_compute_scores(distances, i, n, f):
 def prepare_grad_updates(algorithm, updates, global_model):
 
     num_updates = len(updates)  # equal to num_clients
+    global_vec = model2vec(global_model)
+
     # gradient_updates
-    gradient_updates = updates if "FedSGD" or "FedOpt" in algorithm else np.array(
-            [updates[cid] - model2vec(global_model) for cid in range(num_updates)])
-    
+    gradient_updates = (
+            updates
+            if ("FedSGD" in algorithm) or ("FedOpt" in algorithm)
+            else np.array([updates[cid] - global_vec for cid in range(num_updates)])
+            )    
     return gradient_updates
    
 def prepare_updates(algorithm, updates, global_model, vector_form=True):
@@ -48,7 +52,7 @@ def prepare_updates(algorithm, updates, global_model, vector_form=True):
         gradient_updates = np.array(
             [updates[cid] - model2vec(global_model) for cid in range(num_updates)])
 
-    elif "FedSGD" or "FedOpt" in algorithm:
+    elif algorithm in ["FedSGD", "FedOpt"]:
         gradient_updates = updates
         vec_updates = np.array(
             [model2vec(global_model) + updates[cid] for cid in range(num_updates)])
