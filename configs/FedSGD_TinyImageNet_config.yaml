@@ -182,6 +182,8 @@ defenses:
           cos_threshold: 1.01
           significance: 0.02
           discount: 0.9
+          reputation_threshold: 0.6
+          epochs_phase_2: 20
           num_items_test: 512
           eval_batch_size: 128
     - defense: LASA

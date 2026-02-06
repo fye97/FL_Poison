@@ -253,6 +253,8 @@ class TriGuardFL(AggregatorBase):
             "cos_threshold": 0.0,
             "significance": 0.02,
             "discount": 0.9,
+            "reputation_threshold": 0.6,
+            "epochs_phase_2": 20,
             "num_items_test": 512,
             "eval_batch_size": 128,
         }
@@ -273,6 +275,7 @@ class TriGuardFL(AggregatorBase):
         self.betas = np.ones(num_clients, dtype=float)
 
     def aggregate(self, updates, **kwargs):
+        global_epoch = int(kwargs.get("global_epoch", 0) or 0)
         self.global_model = kwargs["last_global_model"]
         global_weights_vec = kwargs["global_weights_vec"]
         updates = np.array(updates, dtype=np.float32)
@@ -287,6 +290,25 @@ class TriGuardFL(AggregatorBase):
             self.alphas = np.ones(num_clients, dtype=float)
             self.betas = np.ones(num_clients, dtype=float)
 
+        reputation_before = self.alphas / (self.alphas + self.betas + 1e-12)
+        participating_indices = np.arange(num_clients, dtype=int)
+        if global_epoch > int(self.epochs_phase_2):
+            participating_indices = np.where(
+                reputation_before >= float(self.reputation_threshold)
+            )[0].astype(int)
+            if participating_indices.size == 0:
+                print(
+                    f"TriGuardFL: no clients with reputation >= {self.reputation_threshold} "
+                    f"at global_epoch={global_epoch}; returning zero update."
+                )
+                zero_grad = np.zeros_like(global_weights_vec)
+                return wrapup_aggregated_grads(
+                    zero_grad, self.args.algorithm, self.global_model, aggregated=True
+                )
+
+        updates = updates[participating_indices]
+        num_participants = len(updates)
+
         local_model_vecs, _ = prepare_updates(
             self.args.algorithm, updates, self.global_model, vector_form=True
         )
@@ -298,11 +320,16 @@ class TriGuardFL(AggregatorBase):
             cosine_similarity, self.cos_threshold
         )
         print("\nCosine Similarity:", cosine_similarity)
-        print("Detected Potential Attackers:", malicious_candidate_index)
+        malicious_candidate_global = (
+            participating_indices[np.asarray(malicious_candidate_index, dtype=int)].tolist()
+            if malicious_candidate_index
+            else []
+        )
+        print("Detected Potential Attackers:", malicious_candidate_global)
 
         w_locals_malicious_candidate = [local_model_vecs[i] for i in malicious_candidate_index]
         w_locals_benign_candidate = [
-            local_model_vecs[i] for i in range(num_clients) if i not in malicious_candidate_index
+            local_model_vecs[i] for i in range(num_participants) if i not in malicious_candidate_index
         ]
         if len(w_locals_benign_candidate) == 0:
             w_locals_benign_candidate = list(local_model_vecs)
@@ -323,12 +350,17 @@ class TriGuardFL(AggregatorBase):
         malicious = _client_detection(
             list_acc_local, list_loss_local, malicious_candidate_index, self.significance
         )
-        rep, self.alphas, self.betas = _client_reputation(
-            self.discount, malicious, self.alphas, self.betas
-        )
+        malicious_global = [int(participating_indices[i]) for i in (malicious or [])]
 
-        print("Detected Attackers:", malicious)
-        print('Reputation:', rep)
+        alpha_part = self.alphas[participating_indices]
+        beta_part = self.betas[participating_indices]
+        rep, alpha_part, beta_part = _client_reputation(self.discount, malicious, alpha_part, beta_part)
+        self.alphas[participating_indices] = alpha_part
+        self.betas[participating_indices] = beta_part
+
+        print("Detected Attackers:", malicious_global)
+        reputation_after = self.alphas / (self.alphas + self.betas + 1e-12)
+        print("Reputation:", reputation_after)
 
         aggregated_model_vec = _weighted_average_vectors(local_model_vecs, rep)
         aggregated_grad = aggregated_model_vec - global_weights_vec
