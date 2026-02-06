@@ -179,7 +179,7 @@ def vec2state(vector, model, plus=False, ignorebn=False, numpy=False):
         param_tensor = vec_tensor[curr_idx:curr_idx + numel].reshape(value.shape)
 
         if plus:
-            value.copy_(value + param_tensor)  # in-place addition
+            value.add_(param_tensor)  # in-place addition
         else:
             value.copy_(param_tensor)  # in-place assignment
         curr_idx += numel
