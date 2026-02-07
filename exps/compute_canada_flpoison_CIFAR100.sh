@@ -4,6 +4,7 @@
 #SBATCH --gpus=nvidia_h100_80gb_hbm3_3g.40gb:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
+#SBATCH --requeue
 #SBATCH --output=/home/%u/FL_Poison/logs/slurm/%x_%A_%a.out
 #SBATCH --error=/home/%u/FL_Poison/logs/slurm/%x_%A_%a.err
 #SBATCH --mail-user=fengye@uvic.ca
@@ -23,6 +24,11 @@ PYTHON_BIN="${PYTHON_BIN:-python}"
 # -------------------
 gpu_idx=0 # 通常 Slurm 下 CUDA_VISIBLE_DEVICES 已重映射为 0
 array_parallel="${ARRAY_PARALLEL:-3}" # 对应 sbatch --array=...%${array_parallel}
+
+# 重复实验（写死）
+# - seed 从 yaml/CLI 的 seed 开始，按 experiment_id 递增
+num_experiments=5
+experiment_id=0
 
 # -------------------
 # 参数网格（可修改）
@@ -77,7 +83,7 @@ epochs_list=("300") # 例如 "50" "100"
 num_clients_list=("20") # 例如 "20" "50"
 learning_rates=("0.05") # 例如 "0.01" "0.05"
 num_advs=( "0.2" "0.3" "0.4") # 攻击者数量：支持比例（<1）或整数（>=1），例如 "0.2" 或 "4"
-seeds=("0" "1" "2" "3" "4") # 例如 "1" "2" "3"
+seeds=("42") # base seed; repeated experiments will use 42 + experiment_id
 
 # attack / defense 组合
 attacks=("NoAttack" "MinMax" "MinSum" "ALIE" "FangAttack")
@@ -273,6 +279,7 @@ echo "  scenario_data=${dataset} (cfg_data=${cfg_dataset}) model=${model}"
 echo "  distribution=${distribution} dirichlet_alpha=${dirichlet_alpha} im_iid_gamma=${im_iid_gamma}"
 echo "  epochs=${epochs} num_clients=${num_clients} lr=${learning_rate}"
 echo "  num_adv=${num_adv} seed=${seed}"
+echo "  num_experiments=${num_experiments} experiment_id=${experiment_id}"
 echo "  attack=${attack} defense=${defense}"
 
 # 输出到 $SCRATCH（避免写 home；可按需修改）
@@ -291,6 +298,76 @@ fi
 cfg_tag="_cfg${config_name%.yaml}"
 output_file="${log_dir}/${dataset}_${model}_${distribution}_${attack}_${defense}_${epochs}_${num_clients}_${learning_rate}_${algorithm}_adv${num_adv}_seed${seed}${extra_tag}${cfg_tag}.txt"
 
+# 传入重复实验参数（每个 array task 内串行重复）
+exp_args=(--num_experiments "${num_experiments}" --experiment_id "${experiment_id}")
+
+# -------------------
+# CUDA sanity check (avoid silent CPU fallback)
+# - Retries in a fresh python process (PyTorch caches CUDA init state per-process).
+# - If still unavailable, optionally requeue this array task to get a different node.
+# -------------------
+cuda_retry_max="${CUDA_RETRY_MAX:-3}"
+cuda_retry_sleep="${CUDA_RETRY_SLEEP:-20}" # seconds
+cuda_requeue_on_fail="${CUDA_REQUEUE_ON_FAIL:-1}"
+cuda_max_requeue="${CUDA_MAX_REQUEUE:-2}"
+
+cuda_ok=0
+for ((i=1; i<=cuda_retry_max; i++)); do
+  if "${PYTHON_BIN}" - <<'PY'
+import sys
+
+import torch
+
+try:
+    ok = torch.cuda.is_available()
+    if ok:
+        torch.zeros(1, device="cuda:0")
+except Exception as e:
+    print(f"CUDA check failed: {e}", file=sys.stderr)
+    ok = False
+sys.exit(0 if ok else 1)
+PY
+  then
+    cuda_ok=1
+    break
+  fi
+  echo "WARN: CUDA not available on $(hostname) (try ${i}/${cuda_retry_max})." >&2
+  echo "  CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-}" >&2
+  nvidia-smi -L >&2 || true
+  if [ "${i}" -lt "${cuda_retry_max}" ]; then
+    sleep "${cuda_retry_sleep}"
+  fi
+done
+
+if [ "${cuda_ok}" -ne 1 ]; then
+  echo "ERROR: CUDA still unavailable; abort to avoid CPU fallback." >&2
+
+  if [ "${cuda_requeue_on_fail}" = "1" ] && command -v scontrol >/dev/null 2>&1; then
+    # For array jobs, requeue only this task (e.g., 12345_6)
+    job_to_requeue="${SLURM_JOB_ID:-}"
+    if [ -n "${SLURM_ARRAY_JOB_ID:-}" ] && [ -n "${SLURM_ARRAY_TASK_ID:-}" ]; then
+      job_to_requeue="${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
+    fi
+
+    restart_count="${SLURM_RESTART_COUNT:-0}"
+    if [ -n "${job_to_requeue}" ] && [ "${restart_count}" -lt "${cuda_max_requeue}" ]; then
+      echo "Requeuing ${job_to_requeue} (restart_count=${restart_count})." >&2
+      # Try to avoid this node on requeue (best-effort)
+      if [ -n "${SLURM_NODELIST:-}" ]; then
+        scontrol update JobId="${job_to_requeue}" ExcNodeList="${SLURM_NODELIST}" >/dev/null 2>&1 || true
+      fi
+      if scontrol requeue "${job_to_requeue}" >/dev/null 2>&1; then
+        exit 0
+      fi
+      echo "WARN: scontrol requeue failed; exiting." >&2
+    else
+      echo "WARN: max requeue reached (${cuda_max_requeue}) or unknown job id; exiting." >&2
+    fi
+  fi
+
+  exit 1
+fi
+
 # 执行程序：每个 array task 跑一个场景
 "${PYTHON_BIN}" -u main.py \
   -config="${config_file}" \
@@ -305,6 +382,7 @@ output_file="${log_dir}/${dataset}_${model}_${distribution}_${attack}_${defense}
   "${lr_args[@]}" \
   "${adv_args[@]}" \
   "${seed_args[@]}" \
+  "${exp_args[@]}" \
   -attack "${attack}" \
   -defense "${defense}" \
   -gidx "${gpu_idx}" \

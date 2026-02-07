@@ -1,6 +1,9 @@
 import gc
 import logging
+import os
+import re
 import time
+from pathlib import Path
 from tqdm import tqdm
 from fl import coordinator
 from global_args import benchmark_preprocess, read_args, override_args, single_preprocess
@@ -8,6 +11,32 @@ from global_utils import avg_value, print_filtered_args, setup_logger, setup_see
 from datapreprocessor.data_utils import load_data, split_dataset
 from fl.server import Server
 from plot_utils import plot_accuracy
+
+
+def _output_with_experiment_id(base_output: str, seed: int, experiment_id: int) -> str:
+    """
+    Ensure each experiment writes to a unique output file.
+    - If base_output already contains a seed token like "seed0" or "_seed0_", rewrite it to the effective seed.
+    - If base_output already contains an experiment token like "exp0" or "_exp0_", rewrite it to the current experiment id.
+    - Otherwise append "_exp{experiment_id}" before extension.
+    """
+    p = Path(base_output)
+    suffix = p.suffix
+    stem = p.stem if suffix else p.name
+
+    # Update seed token if present (keep filename truthful to the actual seed).
+    if re.search(r"(?:^|[_-])seed\d+(?:$|[_-])", stem):
+        stem = re.sub(r"seed\d+", f"seed{seed}", stem)
+
+    # Replace existing exp token (exp123, _exp123, -exp123) or append a new one.
+    if re.search(r"(?:^|[_-])exp\d+(?:$|[_-])", stem):
+        stem = re.sub(r"exp\d+", f"exp{experiment_id}", stem)
+    else:
+        stem = f"{stem}_exp{experiment_id}"
+
+    if suffix:
+        return str(p.with_name(stem + suffix))
+    return str(p.with_name(stem))
 
 
 def fl_run(args):
@@ -143,7 +172,49 @@ def main(args, cli_args):
     else:
         override_args(args, cli_args)
         single_preprocess(args)
-        fl_run(args)
+        # Repeat experiments with deterministic seeding:
+        # seed starts from args.seed (after CLI/YAML override) and increments by 1 for each experiment.
+        # Prefer CLI if provided; otherwise fall back to YAML (args.*); else defaults.
+        num_experiments = (
+            cli_args.num_experiments
+            if cli_args.num_experiments is not None
+            else getattr(args, "num_experiments", None)
+        )
+        start_experiment_id = (
+            cli_args.experiment_id
+            if cli_args.experiment_id is not None
+            else getattr(args, "experiment_id", None)
+        )
+        num_experiments = 1 if num_experiments is None else int(num_experiments)
+        start_experiment_id = 0 if start_experiment_id is None else int(start_experiment_id)
+
+        if not hasattr(args, "seed") or args.seed is None:
+            raise ValueError("Missing seed. Set `seed` in YAML or pass `-seed`/`--seed` on CLI.")
+
+        seed_start = int(args.seed)
+        base_output = args.output
+
+        for exp_offset in range(int(num_experiments)):
+            exp_id = int(start_experiment_id) + exp_offset
+            seed = seed_start + exp_id
+
+            args.experiment_id = exp_id
+            args.seed_start = seed_start
+            args.seed = seed
+
+            if base_output:
+                args.output = _output_with_experiment_id(base_output, seed, exp_id)
+
+            fl_run(args)
+
+            # best-effort cleanup between experiments to reduce memory pressure
+            gc.collect()
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":

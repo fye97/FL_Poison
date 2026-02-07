@@ -21,6 +21,15 @@ class TqdmLoggingHandler(logging.Handler):
 
 def setup_logger(logger_name, log_file, level=logging.INFO, stream=False, use_tqdm=False):
     logger = logging.getLogger(logger_name)
+    # In repeated experiments within the same Python process, avoid accumulating handlers.
+    if logger.handlers:
+        for h in list(logger.handlers):
+            logger.removeHandler(h)
+            try:
+                h.close()
+            except Exception:
+                pass
+    logger.propagate = False
     formatter = logging.Formatter('%(message)s')
     os.makedirs(os.path.dirname(log_file), exist_ok=True)
     fileHandler = logging.FileHandler(log_file, mode='w', encoding='utf-8')

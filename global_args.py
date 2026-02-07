@@ -27,6 +27,12 @@ def read_args():
                         help='Run all combinations of attacks and defenses')
     parser.add_argument('-e', '--epochs', type=int)
     parser.add_argument('-seed', '--seed', type=int)
+    # repeat experiments with deterministic seeding (seed_start + experiment_id)
+    # keep defaults as None to avoid "Warning: Overriding ..." when not provided
+    parser.add_argument('--num_experiments', type=int, default=None,
+                        help='Number of repeated experiments (seeds increment by 1 each run)')
+    parser.add_argument('--experiment_id', type=int, default=None,
+                        help='Starting experiment id (default: 0). Effective seed = seed_start + experiment_id')
     parser.add_argument('-alg', '--algorithm', choices=all_algorithms)
     parser.add_argument('-opt', '--optimizer', choices=['SGD', 'Adam'],
                         help='optimizer for training')
@@ -131,8 +137,9 @@ def override_args(args, cli_args):
             continue
         if value is not None:
             setattr(args, key, value)
-
-            print(f"Warning: Overriding {key} with {value}")
+            # keep stdout clean for experiment-control knobs
+            if key not in ['num_experiments', 'experiment_id']:
+                print(f"Warning: Overriding {key} with {value}")
 
     # override attack, defense, attack_params, defense_params
     for param_type in ['attack', 'defense']:

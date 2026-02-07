@@ -1,5 +1,7 @@
 # This file serves as the configurations for the benchmarking experiments, including the basic configuration and the parameters for all attacks and defenses that are going to be tested. You can copy this file and modify it to run your own single attack and defense experiments.
-seed: 4 # seed for reproducibility
+seed: 42 # seed for reproducibility
+num_experiments: 1 # repeat experiments with seeds: seed + experiment_id (0..num_experiments-1)
+experiment_id: 0 # starting experiment id (for resume); effective seed = seed + experiment_id
 # basic configuration
 epochs: 300 # global epochs
 algorithm: FedSGD # algorithm, FedSGD, FedAvg, FedOpt
