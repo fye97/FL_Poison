@@ -3,7 +3,7 @@
 #SBATCH --account=def-lincai
 #SBATCH --gpus=nvidia_h100_80gb_hbm3_3g.40gb:1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=32G
+#SBATCH --mem=64G
 #SBATCH --mail-user=fengye@uvic.ca
 #SBATCH --mail-type=ALL
 #SBATCH --array=0-0%3    # 建议提交时用 sbatch --array=0-(TOTAL-1)%K 覆盖（脚本会打印 TOTAL）
