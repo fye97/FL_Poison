@@ -219,7 +219,7 @@ def _client_reputation(
 
     for uid in range(num_clients):
         if uid in malicious_set:
-            alpha_update[uid] = discount * alpha_last[uid]
+            alpha_update[uid] = discount * alpha_last[uid] - 1.0
             beta_update[uid] = discount * beta_last[uid] + 1.0
             rep[uid] = 0.0
         else:

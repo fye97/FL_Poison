@@ -44,7 +44,7 @@ def read_args():
                         help='local global_epoch')
     parser.add_argument('-model', '--model', choices=all_models)
     parser.add_argument('-data', '--dataset',
-                        choices=['MNIST', 'FashionMNIST', 'CIFAR10', 'CINIC10', 'CIFAR100', 'EMNIST'])
+                        choices=['MNIST', 'FashionMNIST', 'CIFAR10', 'CINIC10', 'CIFAR100', 'EMNIST', 'CHMNIST', 'TinyImageNet'])
     parser.add_argument('-dtb', '--distribution',
                         choices=['iid', 'class-imbalanced_iid', 'non-iid', 'pat', 'imbalanced_pat'])
     parser.add_argument('-dirichlet_alpha', '--dirichlet_alpha', type=float,
@@ -195,7 +195,8 @@ def single_preprocess(args):
     ensure_attr(args, 'defense_params')
 
     # generate output path if not provided
-    args.output = f'./logs/{args.algorithm}/{args.dataset}_{args.model}/{args.distribution}/{args.dataset}_{args.model}_{args.distribution}_{args.attack}_{args.defense}_{args.epochs}_{args.num_clients}_{args.learning_rate}_{args.algorithm}.txt'
+    if not hasattr(args, 'output') or args.output is None:
+        args.output = f'./logs/{args.algorithm}/{args.dataset}_{args.model}/{args.distribution}/{args.dataset}_{args.model}_{args.distribution}_{args.attack}_{args.defense}_{args.epochs}_{args.num_clients}_{args.learning_rate}_{args.algorithm}.txt'
 
     # check output path, if exists, skip, otherwise create the directories
     os.makedirs(os.path.dirname(args.output), exist_ok=True)

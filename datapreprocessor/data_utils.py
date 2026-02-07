@@ -59,7 +59,7 @@ def subset_by_idx(args, dataset, indices, train=True):
 
 
 def get_transform(args):
-    if args.dataset in ["MNIST", "FashionMNIST", "EMNIST", "FEMNIST"] and args.model in ['lenet', "lr"]:
+    if args.dataset in ["MNIST", "FashionMNIST", "EMNIST", "FEMNIST"] and args.model in ['lenet', 'lenet_bn', "lr"]:
         # resize MNIST to 32x32 for LeNet5
         train_tran = transforms.Compose(
             [transforms.Resize((32, 32)), transforms.ToTensor(), transforms.Normalize(args.mean, args.std)])
@@ -69,6 +69,17 @@ def get_transform(args):
     elif args.dataset in ["CINIC10"]:
         train_tran = transforms.Compose(
             [transforms.ToTensor(), transforms.Normalize(mean=args.mean, std=args.std)])
+        test_trans = train_tran
+    elif args.dataset in ["CHMNIST"]:
+        if not hasattr(args, "num_dims") or args.num_dims is None:
+            args.num_dims = 150
+        train_tran = transforms.Compose(
+            [
+                transforms.Resize((args.num_dims, args.num_dims)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=args.mean, std=args.std),
+            ]
+        )
         test_trans = train_tran
     elif args.dataset in ["CIFAR10", "CIFAR100", "TinyImageNet"]:
         args.num_dims = 32 if args.dataset in ['CIFAR10', 'CIFAR100'] else 64
@@ -183,33 +194,82 @@ def check_noniid_labels(args, train_dataset, client_indices):
 class Partition(Dataset):
     def __init__(self, dataset, indices=None, transform=None):
         self.dataset = dataset
-        self.classes = dataset.classes
-        self.indices = indices if indices is not None else range(len(dataset))
-        self.data, self.targets = dataset.data[self.indices], dataset.targets[self.indices]
-        # (N, C, H, W) or (N, H, W) for MNIST-like grey images, mode='L'; CIFAR10-like color images, mode='RGB'
-        self.mode = 'L' if len(self.data.shape) == 3 else 'RGB'
+        self.classes = getattr(dataset, "classes", None)
+        raw_indices = indices if indices is not None else range(len(dataset))
+        if torch.is_tensor(raw_indices):
+            self.indices = [int(i) for i in raw_indices.cpu().tolist()]
+        elif isinstance(raw_indices, np.ndarray):
+            self.indices = [int(i) for i in raw_indices.astype(np.int64).tolist()]
+        else:
+            self.indices = [int(i) for i in raw_indices]
+
+        # Prefer dataset.data/dataset.targets if available; fall back to common custom dataset attrs.
+        self.data = None
+        if hasattr(dataset, "data"):
+            base_data = dataset.data
+            if isinstance(base_data, (list, tuple)):
+                self.data = [base_data[i] for i in self.indices]
+            else:
+                self.data = base_data[self.indices]
+        elif hasattr(dataset, "image_paths"):
+            base_data = dataset.image_paths
+            self.data = [base_data[i] for i in self.indices]
+
+        base_targets = None
+        for attr in ("targets", "labels", "train_labels"):
+            if hasattr(dataset, attr):
+                base_targets = getattr(dataset, attr)
+                break
+        if base_targets is None:
+            self.targets = None
+        elif isinstance(base_targets, (list, tuple)):
+            self.targets = torch.tensor([base_targets[i] for i in self.indices])
+        else:
+            self.targets = base_targets[self.indices]
+
+        # mode='L' for MNIST-like grey images; mode='RGB' for color images or image paths.
+        self.mode = 'RGB'
+        if self.data is not None and not isinstance(self.data, (list, tuple)):
+            try:
+                self.mode = 'L' if len(self.data.shape) == 3 else 'RGB'
+            except Exception:
+                self.mode = 'RGB'
         self.transform = transform
         self.poison = False
 
     def __len__(self):
-        return len(self.data)
+        if self.data is not None:
+            return len(self.data)
+        return len(self.indices)
 
     def __getitem__(self, idx):
-        image, target = self.data[idx], self.targets[idx]
+        if self.data is None:
+            # Fallback for datasets without materialized data storage.
+            real_idx = self.indices[idx]
+            image, target = self.dataset[real_idx]
+            return image, target
 
-        # doing this so that it is consistent with all other datasets
-        # convert image to numpy array. for MNIST-like dataset, image is torch tensor, for CIFAR10-like dataset, image type is numpy array.
-        if not isinstance(image, (np.ndarray, np.generic)):
-            image = image.numpy()
-        # to return a PIL Image
-        image = Image.fromarray(image, mode=self.mode)
+        image, target = self.data[idx], self.targets[idx] if self.targets is not None else None
+
+        # Convert to PIL Image for transforms.
+        if isinstance(image, (str, os.PathLike)):
+            image = Image.open(image).convert(self.mode)
+        else:
+            # Convert image to numpy array. For MNIST-like dataset, image is torch tensor;
+            # for CIFAR-like dataset, image type is numpy array.
+            if not isinstance(image, (np.ndarray, np.generic)):
+                image = image.numpy()
+            image = Image.fromarray(image, mode=self.mode)
         if self.transform:
             image = self.transform(image)
 
         if self.poison:
+            target_tensor = target if torch.is_tensor(target) else torch.tensor(target)
             image, target = self.synthesizer.backdoor_batch(
-                image, target.reshape(-1, 1))
-        return image, target.squeeze()
+                image, target_tensor.reshape(-1, 1))
+        if torch.is_tensor(target):
+            target = target.squeeze()
+        return image, target
 
     def poison_setup(self, synthesizer):
         self.poison = True
