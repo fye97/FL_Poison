@@ -41,7 +41,10 @@ MANIFEST
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt
-logs/
+logs/*
+!logs/.gitkeep
+!logs/slurm/
+!logs/slurm/.gitkeep
 
 # Unit test / coverage reports
 htmlcov/
