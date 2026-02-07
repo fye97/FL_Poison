@@ -27,7 +27,7 @@ array_parallel="${ARRAY_PARALLEL:-3}" # 对应 sbatch --array=...%${array_parall
 # -------------------
 # 选择要跑的算法和数据集（不要求每个 {algorithm}_{dataset}_config.yaml 都存在）
 algorithms=("FedSGD") # 例如 "FedSGD" "FedOpt"
-datasets=("CIFAR10" "CIFAR100" "TinyImageNet") # 例如 "MNIST" "FashionMNIST" "EMNIST" "CIFAR10" "CIFAR100" "CINIC10" "CHMNIST" "TinyImageNet"
+datasets=("CIFAR100") # 例如 "MNIST" "FashionMNIST" "EMNIST" "CIFAR10" "CIFAR100" "CINIC10" "CHMNIST" "TinyImageNet"
 
 # 场景列表：alg|dataset|config_file
 # 逻辑：
@@ -70,7 +70,7 @@ dist_specs=(
 )
 
 # 训练超参（可用 "__cfg__" 表示使用 config 默认值）
-models=("vgg11" "resnet18") # 例如 "resnet18" "lenet"
+models=("resnet18") # 例如 "resnet18" "lenet"
 epochs_list=("300") # 例如 "50" "100"
 num_clients_list=("20") # 例如 "20" "50"
 learning_rates=("0.05") # 例如 "0.01" "0.05"
