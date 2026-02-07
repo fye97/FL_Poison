@@ -70,7 +70,7 @@ dist_specs=(
 )
 
 # 训练超参（可用 "__cfg__" 表示使用 config 默认值）
-models=("vgg11""resnet18""resnet50") # 例如 "resnet18" "lenet"
+models=("vgg11" "resnet18" "resnet50") # 例如 "resnet18" "lenet"
 epochs_list=("300") # 例如 "50" "100"
 num_clients_list=("20") # 例如 "20" "50"
 learning_rates=("0.05") # 例如 "0.01" "0.05"
