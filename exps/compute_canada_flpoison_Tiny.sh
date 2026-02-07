@@ -108,7 +108,7 @@ if [ -z "${SLURM_ARRAY_TASK_ID:-}" ]; then
   echo "  models=${n_models}, epochs_list=${n_epochs}, num_clients_list=${n_clients}, learning_rates=${n_lrs}"
   echo "  num_advs=${n_advs}, seeds=${n_seeds}, attacks=${n_attacks}, defenses=${n_defenses}"
   echo "Submit example:"
-  echo "  sbatch --array=0-$((total - 1))%${array_parallel} exps/YE_flpoison.sh"
+  echo "  sbatch --array=0-$((total - 1))%${array_parallel} exps/compute_canada_flpoison_Tiny.sh"
   exit 0
 fi
 
