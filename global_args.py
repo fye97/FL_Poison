@@ -1,4 +1,5 @@
 import os
+import sys
 import torch
 import yaml
 from aggregators import all_aggregators
@@ -8,6 +9,43 @@ from fl.algorithms import all_algorithms
 import argparse
 from types import SimpleNamespace
 from global_utils import frac_or_int_to_int
+
+
+def _normalize_single_dash_long_opts(argv, parser):
+    """
+    Support passing long options with a single dash, e.g.:
+      -experiment_id=0  -> --experiment_id=0
+      -num_experiments 5 -> --num_experiments 5
+
+    This is needed because argparse treats "-experiment_id" as "-e xperiment_id"
+    when "-e/--epochs" exists, so exact single-dash long options are unreliable
+    without normalization.
+    """
+    # Collect long option names (without the leading '--').
+    long_names = set()
+    for opt in parser._option_string_actions.keys():
+        if opt.startswith("--") and len(opt) > 2:
+            long_names.add(opt[2:])
+
+    out = []
+    for tok in argv:
+        # Keep standard forms as-is.
+        if tok.startswith("--") or not tok.startswith("-") or tok == "-":
+            out.append(tok)
+            continue
+
+        # Only rewrite non-short options like "-foo" or "-foo=bar".
+        if len(tok) <= 2:
+            out.append(tok)
+            continue
+
+        body = tok[1:]
+        name = body.split("=", 1)[0]
+        if name in long_names:
+            out.append("--" + body)
+        else:
+            out.append(tok)
+    return out
 
 
 def read_args():
@@ -23,18 +61,18 @@ def read_args():
     parser.add_argument('-config', '--config', type=str,
                         required=True, help='Path to the YAML configuration file')
     # command line arguments if provided
-    parser.add_argument('-b', '--benchmark', default=False, type=bool,
+    parser.add_argument('-b', '-benchmark', '--benchmark', default=False, type=bool,
                         help='Run all combinations of attacks and defenses')
-    parser.add_argument('-e', '--epochs', type=int)
+    parser.add_argument('-e', '-epochs', '--epochs', type=int)
     parser.add_argument('-seed', '--seed', type=int)
     # repeat experiments with deterministic seeding (seed_start + experiment_id)
     # keep defaults as None to avoid "Warning: Overriding ..." when not provided
-    parser.add_argument('--num_experiments', type=int, default=None,
+    parser.add_argument('-num_experiments', '--num_experiments', type=int, default=None,
                         help='Number of repeated experiments (seeds increment by 1 each run)')
-    parser.add_argument('--experiment_id', type=int, default=None,
+    parser.add_argument('-experiment_id', '--experiment_id', type=int, default=None,
                         help='Starting experiment id (default: 0). Effective seed = seed_start + experiment_id')
-    parser.add_argument('-alg', '--algorithm', choices=all_algorithms)
-    parser.add_argument('-opt', '--optimizer', choices=['SGD', 'Adam'],
+    parser.add_argument('-alg', '-algorithm', '--algorithm', choices=all_algorithms)
+    parser.add_argument('-opt', '-optimizer', '--optimizer', choices=['SGD', 'Adam'],
                         help='optimizer for training')
     parser.add_argument('-lr_scheduler', '--lr_scheduler', type=str,
                         help='lr_scheduler for training')
@@ -42,16 +80,16 @@ def read_args():
                         help='milestone for learning rate scheduler')
     parser.add_argument('-num_clients', '--num_clients', type=int,
                         help='number of participating clients')
-    parser.add_argument('-bs', '--batch_size', type=int,
+    parser.add_argument('-bs', '-batch_size', '--batch_size', type=int,
                         help='batch_size')
-    parser.add_argument('-lr', '--learning_rate',
+    parser.add_argument('-lr', '-learning_rate', '--learning_rate',
                         type=float, help='initial learning rate')
-    parser.add_argument('-le', '--local_epochs', type=int,
+    parser.add_argument('-le', '-local_epochs', '--local_epochs', type=int,
                         help='local global_epoch')
     parser.add_argument('-model', '--model', choices=all_models)
-    parser.add_argument('-data', '--dataset',
+    parser.add_argument('-data', '-dataset', '--dataset',
                         choices=['MNIST', 'FashionMNIST', 'CIFAR10', 'CINIC10', 'CIFAR100', 'EMNIST', 'CHMNIST', 'TinyImageNet'])
-    parser.add_argument('-dtb', '--distribution',
+    parser.add_argument('-dtb', '-distribution', '--distribution',
                         choices=['iid', 'class-imbalanced_iid', 'non-iid', 'pat', 'imbalanced_pat'])
     parser.add_argument('-dirichlet_alpha', '--dirichlet_alpha', type=float,
                         help='smaller alpha for drichlet distribution, stronger heterogeneity, 0.1 0.5 1 5 10, normally use 0.5')
@@ -71,19 +109,19 @@ def read_args():
                         choices=all_aggregators, help="Defenses options")
     parser.add_argument('-num_adv', '--num_adv', type=float,
                         help='the proportion (float < 1) or number (int>1) of adversaries')
-    parser.add_argument('-o', '--output', type=str,
+    parser.add_argument('-o', '-output', '--output', type=str,
                         help='output file for results')
-    parser.add_argument('--log_stream', action='store_true', default=None,
+    parser.add_argument('-log_stream', '--log_stream', action='store_true', default=None,
                         help='Enable logging to stdout (tqdm-safe).')
     # poison settings
-    parser.add_argument('-prate', '--poisoning_ratio',
+    parser.add_argument('-prate', '-poisoning_ratio', '--poisoning_ratio',
                         help='poisoning portion (float, range from 0 to 1, default: 0.1)')
-    parser.add_argument('--target_label', type=int,
+    parser.add_argument('-target_label', '--target_label', type=int,
                         help='The No. of target label for backdoored images (int, range from 0 to 10, default: 6)')
-    parser.add_argument('--trigger_path', help='Trigger Path')
-    parser.add_argument('--trigger_size', type=int,
+    parser.add_argument('-trigger_path', '--trigger_path', help='Trigger Path')
+    parser.add_argument('-trigger_size', '--trigger_size', type=int,
                         help='Trigger Size (int, default: 5)')
-    parser.add_argument('-gidx', '--gpu_idx', type=int, nargs="+",
+    parser.add_argument('-gidx', '-gpu_idx', '--gpu_idx', type=int, nargs="+",
                         help='Index of GPU (int, default: 3, choice: 0, 1, 2, 3...)')
 
     # override attack_params or defense_params with dict string
@@ -91,7 +129,9 @@ def read_args():
         '-defense_params', '--defense_params', type=str, help='Override defense parameters')
     parser.add_argument(
         '-attack_params', '--attack_params', type=str, help='Override attack parameters')
-    cli_args = parser.parse_args()
+    cli_args = parser.parse_args(
+        args=_normalize_single_dash_long_opts(sys.argv[1:], parser)
+    )
 
     # load configurations from yaml file if provided
     args = SimpleNamespace()  # compatible with argparse.Namespace
