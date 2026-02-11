@@ -10,6 +10,7 @@ all_models = list(model_registry.keys())
 
 model_categories = {
     "grey": ["lr"],
+    "vector": ["mlp", "fcn"],
     "adaptive": ["lenet", "lenet_bn"],  # 1(grey) or 3(rgb) channels
     "rgb": ["resnet18", "resnet34", "resnet50", "resnet101", "resnet152", "vgg11", "vgg13", "vgg16", "vgg19"],
     "handy": ["simplecnn"]
@@ -25,6 +26,11 @@ def get_model(args):
         assert args.num_channels == 1, "models designed for grey images only supports 1 channel"
         model = model_registry[args.model](
             input_dim=args.num_dims*args.num_dims, num_classes=args.num_classes)
+    elif args.model in model_categories["vector"]:
+        input_dim = getattr(args, "num_features", None)
+        if input_dim is None:
+            raise ValueError("Missing `num_features` for vector model. Add it to configs/dataset_config.yaml for this dataset.")
+        model = model_registry[args.model](input_dim=input_dim, num_classes=args.num_classes)
     elif args.model in model_categories["adaptive"]:
         model = model_registry[args.model](
             num_channels=args.num_channels, num_classes=args.num_classes)

@@ -119,6 +119,19 @@ We provide two types of configuration:
 
 `./configs/FedSGD_MNIST_config.yaml` is for the FedSGD algorithm on the MNIST dataset. You can modify parameters in this file and customize the attack or defense experiment parameters. There are other configuration files for different FL algorithms and datasets, like `FedSGD_CIFAR10_config.yaml`, `FedSGD_CINIC10_config.yaml`, and so on.
 
+## HAR (UCI Human Activity Recognition)
+This repo includes a loader for the UCI HAR dataset (`dataset: HAR`) and a simple vector MLP (`model: mlp`).
+
+1) Either set `download: True` (auto download from the official UCI URL), or download/extract the dataset under `./data/` so one of these exists:
+- `./data/UCI HAR Dataset/train/X_train.txt`
+- `./data/UCI_HAR_Dataset/train/X_train.txt`
+
+2) Run the example config:
+
+```bash
+python main.py -config=./configs/FedAvg_HAR_config.yaml
+```
+
 ## Key Points When Using FLPoison
 Attack inheritance: `DPBase` should appear before `Client`, like `class A(DPBase, Client)`. This ensures that `A` uses the `DPBase.client_test()` method via inheritance.
 

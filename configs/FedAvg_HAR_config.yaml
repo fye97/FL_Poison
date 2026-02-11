@@ -1,0 +1,217 @@
+# Minimal example config for running FedAvg on UCI HAR (vector features).
+seed: 42
+num_experiments: 1
+experiment_id: 0
+
+epochs: 200 # global rounds
+algorithm: FedAvg
+optimizer: SGD
+momentum: 0.9
+weight_decay: 0.0
+
+num_clients: 20
+batch_size: 64
+learning_rate: 0.05
+local_epochs: 4
+
+model: fcn
+dataset: HAR
+download: True
+distribution: iid
+im_iid_gamma: 0.01
+tail_cls_from: 4
+dirichlet_alpha: 0.5
+root: data
+cache_partition: False
+gpu_idx: [0]
+num_workers: 0
+record_time: False
+log_stream: True
+
+# general attack settings
+num_adv: 0.20 # the proportion (float < 1) or number (int>1) of adversaries
+attack: NoAttack
+defense: Mean
+
+attacks:
+    # NOTE: HAR is a vector/tabular dataset; image backdoor attacks (BadNets/DBA/EdgeCase/...) are likely incompatible.
+    # Keep the same attack list as other configs for convenience; use model-poisoning attacks (e.g., FangAttack/MinMax/MinSum/ALIE/IPM).
+    - attack: NoAttack
+    - attack: IPM
+      attack_params:
+          scaling_factor: 0.5
+    - attack: ALIE
+    - attack: Gaussian
+      attack_params:
+          noise_mean: 0
+          noise_std: 1
+    - attack: Mimic
+      attack_params:
+          choice: 0
+    - attack: MinMax
+      attack_params:
+          gamma_init: 10
+          stop_threshold: 1.0e-5
+    - attack: MinSum
+      attack_params:
+          gamma_init: 10
+          stop_threshold: 1.0e-5
+    - attack: FangAttack
+      attack_params:
+          stop_threshold: 1.0e-5
+    - attack: BadNets
+      attack_params:
+          trigger_size: 10
+          attack_model: "all2one"
+          poisoning_ratio: 0.32
+          target_label: 7
+          attack_strategy: continuous
+    - attack: BadNets_image
+      attack_params:
+          trigger_path: ./attackers/triggers/trigger_white.png
+          trigger_size: 5
+          attack_model: "all2one"
+          poisoning_ratio: 0.32
+          target_label: 7
+          attack_strategy: continuous
+    - attack: LabelFlipping
+      attack_params:
+          attack_model: "targeted"
+          source_label: 3
+          target_label: 7
+          attack_strategy: "continuous"
+    - attack: ModelReplacement
+      attack_params:
+          scaling_factor: 20
+          alpha: 0.5
+          attack_model: "all2one"
+          poisoning_ratio: 0.32
+          source_label: 2
+          target_label: 7
+          attack_strategy: "continuous"
+    - attack: DBA
+      attack_params:
+          attack_model: "all2one"
+          scaling_factor: 100
+          trigger_factor: [14, 2, 0]
+          poisoning_ratio: 0.32
+          source_label: 2
+          target_label: 7
+          attack_strategy: "continuous"
+    - attack: EdgeCase
+      attack_params:
+          poisoning_ratio: 0.5
+          epsilon: 0.25
+          projection_type: "l_2"
+          l2_proj_frequency: 1
+          scaling_attack: True
+          scaling_factor: 50
+          target_label: 1
+    - attack: Neurotoxin
+      attack_params:
+          num_sample: 64
+          topk_ratio: 0.1
+          norm_threshold: 0.2
+          attack_model: "all2one"
+          poisoning_ratio: 0.32
+          source_label: 1
+          target_label: 6
+          attack_strategy: "continuous"
+    - attack: AlterMin
+      attack_params:
+          attack_model: targeted
+          poisoned_sample_cnt: 1
+          boosting_factor: 2
+          rho: 1.0e-4
+          benign_epochs: 10
+          malicous_epochs: 5
+          source_label: 3
+          target_label: 7
+
+defenses:
+    - defense: Mean
+    - defense: SimpleClustering
+    - defense: Krum
+      defense_params:
+          enable_check: False
+    - defense: MultiKrum
+      defense_params:
+          avg_percentage: 0.2
+          enable_check: False
+    - defense: TrimmedMean
+      defense_params:
+          beta: 0.1
+    - defense: Median
+    - defense: Bulyan
+      defense_params:
+          enable_check: False
+    - defense: RFA
+      defense_params:
+          num_iters: 3
+          epsilon: 1.0e-6
+    - defense: FLTrust
+      defense_params:
+          num_sample: 100
+    - defense: CenteredClipping
+      defense_params:
+          norm_threshold: 100
+          num_iters: 1
+    - defense: DnC
+      defense_params:
+          subsample_frac: 0.2
+          num_iters: 1
+          fliter_frac: 1.0
+    - defense: Bucketing
+      defense_params:
+          bucket_size: 2
+          selected_aggregator: "Krum"
+    - defense: SignGuard
+      defense_params:
+          lower_bound: 0.1
+          upper_bound: 3.0
+          selection_fraction: 0.1
+          clustering: "MeanShift"
+          random_seed: 2
+    - defense: TriGuardFL
+      defense_params:
+          cos_threshold: 0.0
+          significance: 0.02
+          discount: 0.9
+          reputation_threshold: 0.6
+          epochs_phase_2: 20
+          num_items_test: 512
+          eval_batch_size: 128
+    - defense: LASA
+      defense_params:
+          norm_bound: 1
+          sign_bound: 1
+          sparsity: 0.3
+    - defense: Auror
+      defense_params:
+          indicative_threshold: 7.0e-5
+          indicative_find_epoch: 10
+    - defense: FoolsGold
+      defense_params:
+          epsilon: 1.0e-5
+          topk_ratio: 0.1
+    - defense: NormClipping
+      defense_params:
+          weakDP: True
+          norm_threshold: 3
+          noise_mean: 0
+          noise_std: 0.002
+    - defense: CRFL
+      defense_params:
+          norm_threshold: 3
+          noise_mean: 0
+          noise_std: 0.001
+    - defense: DeepSight
+      defense_params:
+          num_seeds: 3
+          threshold_factor: 0.01
+          num_samples: 20000
+          tau: 0.33
+          epsilon: 1.0e-6
+    - defense: FLAME
+      defense_params:
+          gamma: 1.2e-5

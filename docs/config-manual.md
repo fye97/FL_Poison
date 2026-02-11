@@ -90,8 +90,8 @@ defenses:
 
 - `algorithm`: `FedSGD`, `FedAvg`, `FedOpt`
 - `optimizer`: `SGD`, `Adam`
-- `model`: `simplecnn`, `resnet18`, `resnet34`, `resnet50`, `resnet101`, `resnet152`, `lr`, `lenet`, `lenet_bn`, `vgg11`, `vgg11_bn`, `vgg13`, `vgg13_bn`, `vgg16`, `vgg16_bn`, `vgg19`, `vgg19_bn`
-- `dataset`: `MNIST`, `FashionMNIST`, `EMNIST`, `CIFAR10`, `CIFAR100`, `CINIC10`, `CHMNIST`, `TinyImageNet`
+- `model`: `simplecnn`, `resnet18`, `resnet34`, `resnet50`, `resnet101`, `resnet152`, `lr`, `mlp`, `fcn`, `lenet`, `lenet_bn`, `vgg11`, `vgg11_bn`, `vgg13`, `vgg13_bn`, `vgg16`, `vgg16_bn`, `vgg19`, `vgg19_bn`
+- `dataset`: `MNIST`, `FashionMNIST`, `EMNIST`, `CIFAR10`, `CIFAR100`, `CINIC10`, `CHMNIST`, `TinyImageNet`, `HAR`
 - `distribution`: `iid`, `class-imbalanced_iid`, `non-iid`, `pat`, `imbalanced_pat`
 - `lr_scheduler`: `MultiStepLR`, `StepLR`, `ExponentialLR`, `CosineAnnealingLR`
 

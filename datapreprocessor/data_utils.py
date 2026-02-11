@@ -9,18 +9,26 @@ from datapreprocessor.cinic10 import CINIC10
 from datapreprocessor.chmnist import CHMNIST
 from plot_utils import plot_label_distribution
 from datapreprocessor.tinyimagenet import TinyImageNet
+from datapreprocessor.har import HAR
 
 
 def load_data(args):
     # load dataset
-    trans, test_trans = get_transform(args)
     data_directory = './data'
-    if args.dataset == "EMNIST":
+    if args.dataset == "HAR":
+        download = getattr(args, "download", False)
+        train_dataset = HAR(
+            root=data_directory, train=True, download=download, normalize=True)
+        test_dataset = HAR(
+            root=data_directory, train=False, download=download, normalize=True)
+    elif args.dataset == "EMNIST":
+        trans, test_trans = get_transform(args)
         train_dataset = datasets.EMNIST(data_directory, split="digits", train=True, download=True,
                                         transform=trans)
         test_dataset = datasets.EMNIST(
             data_directory, split="digits", train=False, transform=test_trans)
     elif args.dataset in ["MNIST", "FashionMNIST", "CIFAR10", "CIFAR100"]:
+        trans, test_trans = get_transform(args)
         train_dataset = eval(f"datasets.{args.dataset}")(root=data_directory, train=True,
                                                          download=True, transform=trans)
         test_dataset = eval(f"datasets.{args.dataset}")(root=data_directory, train=False,
@@ -29,6 +37,7 @@ def load_data(args):
         """
         dataset in custom datasets, such as CHMNIST, CINIC10, TinyImageNet
         """
+        trans, test_trans = get_transform(args)
         train_dataset = eval(args.dataset)(root=data_directory, train=True, download=True,
                                 transform=trans)
         test_dataset = eval(args.dataset)(root=data_directory, train=False, download=True,
@@ -52,7 +61,10 @@ def list_to_tensor(vector):
 
 
 def subset_by_idx(args, dataset, indices, train=True):
-    trans = get_transform(args)[0] if train else get_transform(args)[1]
+    if args.dataset == "HAR":
+        trans = None
+    else:
+        trans = get_transform(args)[0] if train else get_transform(args)[1]
     dataset = Partition(
         dataset, indices, transform=trans)
     return dataset
@@ -94,6 +106,9 @@ def get_transform(args):
             transforms.ToTensor(),
             transforms.Normalize(args.mean, args.std)
         ])
+    elif args.dataset in ["HAR"]:
+        # Non-image dataset: no torchvision transform.
+        train_tran, test_trans = None, None
     else:
         raise ValueError("Dataset not implemented yet")
 
@@ -112,7 +127,14 @@ def split_dataset(args, train_dataset, test_dataset):
             args.logger.info("Target indices caches to save time")
             with open(file_path, 'rb') as f:
                 client_indices = pickle.load(f)
-            return client_indices, test_dataset
+            try:
+                lengths = [len(x) for x in client_indices]
+                if min(lengths) > 0:
+                    return client_indices, test_dataset
+                args.logger.warning(
+                    f"Cached partition contains empty clients (min_len={min(lengths)}). Regenerating.")
+            except Exception:
+                args.logger.warning("Cached partition invalid. Regenerating.")
 
     args.logger.info("Generating new indices")
     if args.distribution in ['iid', 'class-imbalanced_iid']:
@@ -319,26 +341,60 @@ def dirichlet_split_noniid(train_labels, alpha, n_clients):
     [orion-orion/FedAO: A toolbox for federated learning](https://github.com/orion-orion/FedAO)
     [Measuring the Effects of Non-Identical Data Distribution for Federated Visual Classification](https://arxiv.org/abs/1909.06335)
     '''
-    n_classes = train_labels.max()+1
-    # (K, N) category label distribution matrix X, recording the proportion of each category assigned to each client
-    label_distribution = np.random.dirichlet([alpha]*n_clients, n_classes)
-    # (K, ...) records the sample index set corresponding to K classes
-    class_idcs = [np.argwhere(train_labels == y).flatten()
-                  for y in range(n_classes)]
+    # Convert labels to a 1D numpy array on CPU for stable numpy ops.
+    if torch.is_tensor(train_labels):
+        labels = train_labels.detach().cpu().numpy()
+    else:
+        labels = np.asarray(train_labels)
+    labels = labels.reshape(-1)
 
-    # Record the sample index sets corresponding to N clients
-    client_idcs = [[] for _ in range(n_clients)]
-    for k_idcs, fracs in zip(class_idcs, label_distribution):
-        # np.split divides the sample index k_idcs of class k into N subsets according to the proportion fracs
-        # i represents the i-th client, idcs represents its corresponding sample index set
-        for i, idcs in enumerate(np.split(k_idcs,
-                                          (np.cumsum(fracs)[:-1]*len(k_idcs)).
-                                          astype(int))):
-            client_idcs[i] += [idcs]
+    n_classes = int(labels.max()) + 1
+    min_size = 1
+    max_retry = 100
 
-    client_idcs = [np.concatenate(idcs) for idcs in client_idcs]
+    # Retry sampling until every client gets at least `min_size` samples.
+    for _ in range(max_retry):
+        # (K, N) category label distribution matrix X, recording the proportion of each category assigned to each client
+        label_distribution = np.random.dirichlet([alpha] * n_clients, n_classes)
 
-    return client_idcs
+        # Record the sample index sets corresponding to N clients
+        client_parts = [[] for _ in range(n_clients)]
+
+        for y, fracs in enumerate(label_distribution):
+            k_idcs = np.where(labels == y)[0].astype(np.int64, copy=False)
+            np.random.shuffle(k_idcs)
+
+            # Split indices for class y according to fracs.
+            split_points = (np.cumsum(fracs)[:-1] * len(k_idcs)).astype(int)
+            for i, part in enumerate(np.split(k_idcs, split_points)):
+                client_parts[i].append(part)
+
+        client_idcs = [
+            np.concatenate(parts).astype(np.int64, copy=False) if len(parts) else np.array([], dtype=np.int64)
+            for parts in client_parts
+        ]
+        if min(len(idcs) for idcs in client_idcs) >= min_size:
+            return [torch.tensor(idcs, dtype=torch.int64) for idcs in client_idcs]
+
+    # Last-resort fix: ensure no empty client by moving 1 sample from the largest client.
+    client_idcs = [
+        np.concatenate(parts).astype(np.int64, copy=False) if len(parts) else np.array([], dtype=np.int64)
+        for parts in client_parts
+    ]
+    empty = [i for i, idcs in enumerate(client_idcs) if len(idcs) == 0]
+    while empty:
+        donor = int(np.argmax([len(idcs) for idcs in client_idcs]))
+        if len(client_idcs[donor]) <= 1:
+            break
+        take = int(client_idcs[donor][-1])
+        client_idcs[donor] = client_idcs[donor][:-1]
+        recv = empty.pop()
+        client_idcs[recv] = np.array([take], dtype=np.int64)
+
+    if min(len(idcs) for idcs in client_idcs) < 1:
+        raise ValueError("Dirichlet partition produced empty client(s). Try a larger dirichlet_alpha.")
+
+    return [torch.tensor(idcs, dtype=torch.int64) for idcs in client_idcs]
 
 
 def dataset_class_indices(dataset, class_label=None):

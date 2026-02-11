@@ -18,7 +18,8 @@ def init_clients(args, client_indices, train_dataset, test_dataset):
         else:
             if args.num_adv == 0:
                 raise AssertionError(
-                    "Attack {args.attack} specified, but attackers set to 0.")
+                    f"Attack {args.attack} specified, but attackers set to 0. Set `num_adv` (>0) to enable attackers."
+                )
             client_obj = Client if worker_id >= args.num_adv else get_attacker_handler(
                 args.attack)
         local_dataset = subset_by_idx(

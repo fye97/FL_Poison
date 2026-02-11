@@ -75,3 +75,14 @@ TinyImageNet:
     num_dims: 64
     mean: (0.485, 0.456, 0.406)
     std: (0.229, 0.224, 0.225)
+
+# [UCI HAR Dataset](https://archive.ics.uci.edu/dataset/240/human+activity+recognition+using+smartphones)
+HAR:
+    num_training_sample: 7352
+    num_channels: 1
+    num_classes: 6
+    num_dims: 1
+    num_features: 561
+    # mean/std are placeholders (HAR features are z-scored in `datapreprocessor/har.py` by default).
+    mean: (0.0,)
+    std: (1.0,)
