@@ -95,10 +95,10 @@ def get_transform(args):
         test_trans = train_tran
     elif args.dataset in ["CIFAR10", "CIFAR100", "TinyImageNet"]:
         args.num_dims = 32 if args.dataset in ['CIFAR10', 'CIFAR100'] else 64
-        # data augmentation
+        # data augmentation for small natural images
         train_tran = transforms.Compose([
-            # transforms.RandomCrop(args.num_dims, padding=4),
-            # transforms.RandomHorizontalFlip(),
+            transforms.RandomCrop(args.num_dims, padding=4),
+            transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             transforms.Normalize(args.mean, args.std)
         ])

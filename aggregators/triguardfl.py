@@ -3,6 +3,7 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 import torch
+from math import erfc, sqrt
 from scipy.stats import ttest_1samp
 from torch.utils.data import DataLoader, Dataset
 
@@ -144,18 +145,46 @@ def _median_cosine_similarities(
 
 
 def _malicious_detection_candidate(
-    cosine_similar: List[float], cos_threshold: float
+    cosine_similar: List[float],
+    cos_threshold: float,
+    method: str = "threshold",
+    significance_level: float = 0.02,
 ) -> List[int]:
     if cosine_similar is None or len(cosine_similar) == 0:
         return []
     cosine_arr = np.asarray(cosine_similar, dtype=float)
     avg_cosine_similarity = np.mean(cosine_arr)
-    malicious_indices = np.where(
-        (cosine_arr < cos_threshold) & (cosine_arr < avg_cosine_similarity)
-    )[0].tolist()
-    if len(malicious_indices) == 0:
-        return []
-    return malicious_indices
+    method = (method or "threshold").lower()
+
+    # Backward-compatible behavior: manual thresholding.
+    if method == "threshold":
+        malicious_indices = np.where(
+            (cosine_arr < float(cos_threshold)) & (cosine_arr < avg_cosine_similarity)
+        )[0].tolist()
+        return malicious_indices
+
+    # Robust outlier test using median/MAD with a normal tail approximation.
+    if method == "mad":
+        sig = float(significance_level) if significance_level is not None else 0.02
+        med = float(np.median(cosine_arr))
+        mad = float(np.median(np.abs(cosine_arr - med)))
+        if not np.isfinite(mad) or mad <= 1e-12:
+            return []
+        scale = 1.4826 * mad  # consistent with std under normality
+        malicious = []
+        for i, s in enumerate(cosine_arr.tolist()):
+            if not np.isfinite(s):
+                continue
+            if s >= med:
+                continue
+            z = (med - float(s)) / scale  # larger => more extreme low outlier
+            # one-sided p-value for low tail under N(0,1)
+            p_one = 0.5 * erfc(z / sqrt(2.0))
+            if (p_one < sig) and (float(s) < avg_cosine_similarity):
+                malicious.append(i)
+        return malicious
+
+    raise ValueError(f"Unknown cosine filter method: {method}")
 
 
 def _perform_t_test(
@@ -251,6 +280,11 @@ class TriGuardFL(AggregatorBase):
         super().__init__(args)
         self.default_defense_params = {
             "cos_threshold": 0.0,
+            # Step-1 candidate detection on cosine similarities:
+            # - threshold: original rule using cos_threshold
+            # - mad: robust significance test via MAD
+            "cos_filter_method": "threshold",
+            "cos_significance": 0.02,
             "significance": 0.02,
             "discount": 0.9,
             "reputation_threshold": 0.6,
@@ -317,7 +351,10 @@ class TriGuardFL(AggregatorBase):
             local_model_vecs, global_weights_vec, self.args.learning_rate
         )
         malicious_candidate_index = _malicious_detection_candidate(
-            cosine_similarity, self.cos_threshold
+            cosine_similarity,
+            self.cos_threshold,
+            method=getattr(self, "cos_filter_method", "threshold"),
+            significance_level=getattr(self, "cos_significance", 0.02),
         )
         print("\nCosine Similarity:", cosine_similarity)
         malicious_candidate_global = (
