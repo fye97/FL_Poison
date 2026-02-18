@@ -182,6 +182,8 @@ defenses:
     - defense: TriGuardFL
       defense_params:
           cos_threshold: 0.0
+          cos_filter_method: mad # threshold, mad
+          cos_significance: 0.02
           significance: 0.02
           discount: 0.9
           reputation_threshold: 0.6
