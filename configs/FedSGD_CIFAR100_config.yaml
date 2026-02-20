@@ -180,25 +180,6 @@ defenses:
           cos_threshold: 0.0
           cos_filter_method: mad # threshold, mad
           cos_significance: 0.02
-          norm_filter_method: mad
-          norm_filter_k: 3.5
-          norm_filter_percentile: 0.95
-          candidate_rule: cos_or_norm
-          phase2_method: robust
-          phase2_outlier_k: 3.0
-          phase2_abs_k: 3.0
-          phase2_min_pos_frac: 0.6
-          max_phase2_candidates: 5
-          delta_clip_method: mad
-          delta_clip_k: 3.0
-          delta_clip_percentile: 0.95
-          delta_clip_value: 0.0
-          rep_alpha_inc: 1.0
-          rep_beta_inc: 1.0
-          rep_hard_zero: False
-          phase2_gating: soft
-          phase2_topk_frac: 0.8
-          phase2_min_keep: 1
           significance: 0.02
           discount: 0.9
           reputation_threshold: 0.6

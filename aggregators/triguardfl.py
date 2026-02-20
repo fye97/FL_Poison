@@ -280,69 +280,6 @@ def _client_detection(
     return [malicious_candidates[i] for i in malicious_indices_rel]
 
 
-def _client_detection_robust_score(
-    list_loss: List[List[float]],
-    malicious_candidates: List[int],
-    *,
-    outlier_k: float = 3.0,
-    abs_k: float = 3.0,
-    min_pos_frac: float = 0.6,
-) -> List[int]:
-    """
-    Robust phase-2 check based on per-class loss deltas vs a benign reference.
-
-    For candidate i:
-      diff = loss_i - loss_ref  (vector over classes)
-      score_i = median(diff)
-      pos_frac_i = mean(diff > 0)
-
-    Decision:
-      - if only 1-2 candidates: score_i > abs_k * MAD(loss_ref)  and pos_frac_i >= min_pos_frac
-      - else: score_i is a high outlier among candidates (median + outlier_k*MAD(scores)),
-              additionally above abs_k*MAD(loss_ref), and pos_frac_i >= min_pos_frac
-    """
-    if not list_loss or len(list_loss) < 2:
-        return []
-    benign_loss = np.asarray(list_loss[-1], dtype=float)
-    benign_loss = benign_loss[np.isfinite(benign_loss)]
-    if benign_loss.size == 0:
-        return []
-
-    b_med, b_mad = _robust_median_mad(benign_loss)
-    b_scale = 1.4826 * b_mad
-    abs_thr = float(abs_k) * float(b_scale)
-
-    scores: List[float] = []
-    pos_fracs: List[float] = []
-    for i in range(len(list_loss) - 1):
-        cand_loss = np.asarray(list_loss[i], dtype=float)
-        diff = cand_loss - benign_loss
-        diff = diff[np.isfinite(diff)]
-        if diff.size == 0:
-            scores.append(0.0)
-            pos_fracs.append(0.0)
-            continue
-        scores.append(float(np.median(diff)))
-        pos_fracs.append(float(np.mean(diff > 0)))
-
-    if not scores:
-        return []
-    scores_arr = np.asarray(scores, dtype=float)
-
-    if len(scores) < 3:
-        thr = abs_thr
-    else:
-        s_med, s_mad = _robust_median_mad(scores_arr)
-        s_scale = 1.4826 * s_mad
-        thr = max(abs_thr, float(s_med) + float(outlier_k) * float(s_scale))
-
-    malicious = []
-    for idx, (score, pos_frac) in enumerate(zip(scores, pos_fracs)):
-        if (pos_frac >= float(min_pos_frac)) and (score > thr):
-            malicious.append(malicious_candidates[idx])
-    return malicious
-
-
 def _client_reputation(
     discount: float,
     malicious: List[int],
@@ -413,15 +350,6 @@ class TriGuardFL(AggregatorBase):
             # - cos: only cosine candidates
             # - cos_or_norm: union(cos, norm)
             "candidate_rule": "cos_or_norm",
-            # Phase-2 decision rule.
-            # - t_test: legacy t-test heuristic
-            # - robust: robust score (median loss delta) + MAD threshold
-            "phase2_method": "robust",
-            "phase2_outlier_k": 3.0,
-            "phase2_abs_k": 3.0,
-            "phase2_min_pos_frac": 0.6,
-            # Limit expensive server-side evaluations to top-k candidates.
-            "max_phase2_candidates": 5,
             # Aggregation: clip per-client delta norms before averaging.
             # If delta_clip_value > 0, it is used as a fixed clip norm.
             # Otherwise, it is derived from the current-round norm stats.
@@ -540,28 +468,7 @@ class TriGuardFL(AggregatorBase):
         )
         print("Detected Potential Attackers:", malicious_candidate_global)
 
-        # Limit expensive phase-2 eval to the most suspicious candidates.
-        max_cand = int(getattr(self, "max_phase2_candidates", 5) or 0)
-        if max_cand > 0 and len(malicious_candidate_index) > max_cand:
-            chosen: List[int] = []
-            # Prioritize low-cos candidates.
-            for i in sorted(cos_candidates, key=lambda j: cosine_similarity[j]):
-                if i in malicious_candidate_index and i not in chosen:
-                    chosen.append(i)
-                if len(chosen) >= max_cand:
-                    break
-            # Then prioritize high-norm candidates.
-            if len(chosen) < max_cand:
-                for i in sorted(norm_candidates, key=lambda j: delta_norms[j], reverse=True):
-                    if i in malicious_candidate_index and i not in chosen:
-                        chosen.append(i)
-                    if len(chosen) >= max_cand:
-                        break
-            malicious_candidate_eval = chosen
-        else:
-            malicious_candidate_eval = list(malicious_candidate_index)
-
-        w_locals_malicious_candidate = [local_model_vecs[i] for i in malicious_candidate_eval]
+        w_locals_malicious_candidate = [local_model_vecs[i] for i in malicious_candidate_index]
         w_locals_benign_candidate = [
             local_model_vecs[i] for i in range(num_participants) if i not in malicious_candidate_index
         ]
@@ -570,34 +477,20 @@ class TriGuardFL(AggregatorBase):
 
         w_glob_benign_candidate = np.mean(np.stack(w_locals_benign_candidate, axis=0), axis=0)
 
-        malicious: List[int] = []
-        if malicious_candidate_eval:
-            list_acc_local, list_loss_local = [], []
-            for c in range(len(malicious_candidate_eval) + 1):
-                net_server_local = deepcopy(self.global_model)
-                if c < len(malicious_candidate_eval):
-                    vec2model(w_locals_malicious_candidate[c], net_server_local)
-                else:
-                    vec2model(w_glob_benign_candidate, net_server_local)
-                acc_total, loss_total = self.server_evaluator.evaluate_by_class(net_server_local)
-                list_acc_local.append(acc_total)
-                list_loss_local.append(loss_total)
-
-            phase2 = (getattr(self, "phase2_method", "robust") or "robust").lower()
-            if phase2 == "t_test":
-                malicious = _client_detection(
-                    list_acc_local, list_loss_local, malicious_candidate_eval, self.significance
-                )
-            elif phase2 == "robust":
-                malicious = _client_detection_robust_score(
-                    list_loss_local,
-                    malicious_candidate_eval,
-                    outlier_k=getattr(self, "phase2_outlier_k", 3.0),
-                    abs_k=getattr(self, "phase2_abs_k", 3.0),
-                    min_pos_frac=getattr(self, "phase2_min_pos_frac", 0.6),
-                )
+        list_acc_local, list_loss_local = [], []
+        for c in range(len(malicious_candidate_index) + 1):
+            net_server_local = deepcopy(self.global_model)
+            if c < len(malicious_candidate_index):
+                vec2model(w_locals_malicious_candidate[c], net_server_local)
             else:
-                raise ValueError(f"Unknown phase2_method: {phase2}")
+                vec2model(w_glob_benign_candidate, net_server_local)
+            acc_total, loss_total = self.server_evaluator.evaluate_by_class(net_server_local)
+            list_acc_local.append(acc_total)
+            list_loss_local.append(loss_total)
+
+        malicious = _client_detection(
+            list_acc_local, list_loss_local, malicious_candidate_index, self.significance
+        )
 
         malicious_global = [int(participating_indices[i]) for i in (malicious or [])]
 
