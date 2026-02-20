@@ -16,6 +16,26 @@ from fl.models.model_utils import vec2model
 from tqdm import tqdm
 
 
+def _robust_median_mad(x: np.ndarray) -> Tuple[float, float]:
+    """Return (median, MAD) on finite values; MAD is unscaled."""
+    arr = np.asarray(x, dtype=float)
+    arr = arr[np.isfinite(arr)]
+    if arr.size == 0:
+        return 0.0, 0.0
+    med = float(np.median(arr))
+    mad = float(np.median(np.abs(arr - med)))
+    return med, mad
+
+
+def _clip_vectors_by_l2_norm(vectors: np.ndarray, clip_norm: float, eps: float = 1e-12) -> np.ndarray:
+    """Clip row-wise vectors so that ||v_i||_2 <= clip_norm."""
+    if clip_norm is None or not np.isfinite(clip_norm) or clip_norm <= 0:
+        return vectors
+    norms = np.linalg.norm(vectors, axis=1) + eps
+    scales = np.minimum(1.0, float(clip_norm) / norms).astype(vectors.dtype, copy=False)
+    return vectors * scales.reshape(-1, 1)
+
+
 class _ServerEvaluator:
     def __init__(self, args, dataset: Dataset, indices: np.ndarray, batch_size: int):
         self.args = args
@@ -187,6 +207,35 @@ def _malicious_detection_candidate(
     raise ValueError(f"Unknown cosine filter method: {method}")
 
 
+def _norm_outlier_candidates(
+    norms: np.ndarray,
+    method: str = "none",
+    k: float = 3.5,
+    percentile: float = 0.95,
+) -> List[int]:
+    method = (method or "none").lower()
+    x = np.asarray(norms, dtype=float)
+    x = x[np.isfinite(x)]
+    if x.size == 0 or method == "none":
+        return []
+
+    if method == "percentile":
+        q = float(percentile)
+        q = min(max(q, 0.0), 1.0)
+        thr = float(np.quantile(x, q))
+        return np.where(norms >= thr)[0].tolist()
+
+    if method == "mad":
+        med, mad = _robust_median_mad(x)
+        scale = 1.4826 * mad
+        if not np.isfinite(scale) or scale <= 1e-12:
+            return []
+        thr = med + float(k) * scale
+        return np.where(norms >= thr)[0].tolist()
+
+    raise ValueError(f"Unknown norm filter method: {method}")
+
+
 def _perform_t_test(
     data_vector: np.ndarray, target_indices: List[int], significance_level: float = 0.05
 ) -> Dict[int, Tuple[float, bool]]:
@@ -231,11 +280,78 @@ def _client_detection(
     return [malicious_candidates[i] for i in malicious_indices_rel]
 
 
+def _client_detection_robust_score(
+    list_loss: List[List[float]],
+    malicious_candidates: List[int],
+    *,
+    outlier_k: float = 3.0,
+    abs_k: float = 3.0,
+    min_pos_frac: float = 0.6,
+) -> List[int]:
+    """
+    Robust phase-2 check based on per-class loss deltas vs a benign reference.
+
+    For candidate i:
+      diff = loss_i - loss_ref  (vector over classes)
+      score_i = median(diff)
+      pos_frac_i = mean(diff > 0)
+
+    Decision:
+      - if only 1-2 candidates: score_i > abs_k * MAD(loss_ref)  and pos_frac_i >= min_pos_frac
+      - else: score_i is a high outlier among candidates (median + outlier_k*MAD(scores)),
+              additionally above abs_k*MAD(loss_ref), and pos_frac_i >= min_pos_frac
+    """
+    if not list_loss or len(list_loss) < 2:
+        return []
+    benign_loss = np.asarray(list_loss[-1], dtype=float)
+    benign_loss = benign_loss[np.isfinite(benign_loss)]
+    if benign_loss.size == 0:
+        return []
+
+    b_med, b_mad = _robust_median_mad(benign_loss)
+    b_scale = 1.4826 * b_mad
+    abs_thr = float(abs_k) * float(b_scale)
+
+    scores: List[float] = []
+    pos_fracs: List[float] = []
+    for i in range(len(list_loss) - 1):
+        cand_loss = np.asarray(list_loss[i], dtype=float)
+        diff = cand_loss - benign_loss
+        diff = diff[np.isfinite(diff)]
+        if diff.size == 0:
+            scores.append(0.0)
+            pos_fracs.append(0.0)
+            continue
+        scores.append(float(np.median(diff)))
+        pos_fracs.append(float(np.mean(diff > 0)))
+
+    if not scores:
+        return []
+    scores_arr = np.asarray(scores, dtype=float)
+
+    if len(scores) < 3:
+        thr = abs_thr
+    else:
+        s_med, s_mad = _robust_median_mad(scores_arr)
+        s_scale = 1.4826 * s_mad
+        thr = max(abs_thr, float(s_med) + float(outlier_k) * float(s_scale))
+
+    malicious = []
+    for idx, (score, pos_frac) in enumerate(zip(scores, pos_fracs)):
+        if (pos_frac >= float(min_pos_frac)) and (score > thr):
+            malicious.append(malicious_candidates[idx])
+    return malicious
+
+
 def _client_reputation(
     discount: float,
     malicious: List[int],
     alpha: np.ndarray,
     beta: np.ndarray,
+    *,
+    alpha_inc: float = 1.0,
+    beta_inc: float = 1.0,
+    hard_zero: bool = False,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     alpha_last = np.array(alpha, copy=True)
     beta_last = np.array(beta, copy=True)
@@ -249,13 +365,14 @@ def _client_reputation(
     for uid in range(num_clients):
         if uid in malicious_set:
             alpha_update[uid] = discount * alpha_last[uid]
-            beta_update[uid] = discount * beta_last[uid] + 2.0
-            rep[uid] = 0.0
+            beta_update[uid] = discount * beta_last[uid] + float(beta_inc)
         else:
-            alpha_update[uid] = discount * alpha_last[uid] + 1.0
+            alpha_update[uid] = discount * alpha_last[uid] + float(alpha_inc)
             beta_update[uid] = discount * beta_last[uid]
-            denom = alpha_update[uid] + beta_update[uid]
-            rep[uid] = (alpha_update[uid] / denom) if denom > 0 else 0.0
+        denom = alpha_update[uid] + beta_update[uid]
+        rep[uid] = (alpha_update[uid] / denom) if denom > 0 else 0.0
+        if hard_zero and uid in malicious_set:
+            rep[uid] = 0.0
     return rep, alpha_update, beta_update
 
 
@@ -285,12 +402,50 @@ class TriGuardFL(AggregatorBase):
             # - mad: robust significance test via MAD
             "cos_filter_method": "threshold",
             "cos_significance": 0.02,
+            # Optional additional candidate signal: update norm outliers.
+            # - none: disable
+            # - mad: median + k*MAD
+            # - percentile: keep those above quantile
+            "norm_filter_method": "mad",
+            "norm_filter_k": 3.5,
+            "norm_filter_percentile": 0.95,
+            # How to combine cosine/norm candidates.
+            # - cos: only cosine candidates
+            # - cos_or_norm: union(cos, norm)
+            "candidate_rule": "cos_or_norm",
+            # Phase-2 decision rule.
+            # - t_test: legacy t-test heuristic
+            # - robust: robust score (median loss delta) + MAD threshold
+            "phase2_method": "robust",
+            "phase2_outlier_k": 3.0,
+            "phase2_abs_k": 3.0,
+            "phase2_min_pos_frac": 0.6,
+            # Limit expensive server-side evaluations to top-k candidates.
+            "max_phase2_candidates": 5,
+            # Aggregation: clip per-client delta norms before averaging.
+            # If delta_clip_value > 0, it is used as a fixed clip norm.
+            # Otherwise, it is derived from the current-round norm stats.
+            "delta_clip_method": "mad",  # mad, percentile, none
+            "delta_clip_k": 3.0,
+            "delta_clip_percentile": 0.95,
+            "delta_clip_value": 0.0,
             "significance": 0.02,
             "discount": 0.9,
             "reputation_threshold": 0.6,
             "epochs_phase_2": 20,
             "num_items_test": 512,
             "eval_batch_size": 128,
+            # Reputation update: soften penalties to reduce clean-scenario drift.
+            "rep_alpha_inc": 1.0,
+            "rep_beta_inc": 1.0,
+            "rep_hard_zero": False,
+            # Phase-2 "gating" strategy (replacing the old hard drop + zero update):
+            # - soft: don't drop participants; only use reputation as weights
+            # - threshold: keep rep >= reputation_threshold
+            # - topk: keep top-k fraction by reputation
+            "phase2_gating": "soft",
+            "phase2_topk_frac": 0.8,
+            "phase2_min_keep": 1,
         }
         self.update_and_set_attr()
 
@@ -327,18 +482,21 @@ class TriGuardFL(AggregatorBase):
         reputation_before = self.alphas / (self.alphas + self.betas + 1e-12)
         participating_indices = np.arange(num_clients, dtype=int)
         if global_epoch > int(self.epochs_phase_2):
-            participating_indices = np.where(
-                reputation_before >= float(self.reputation_threshold)
-            )[0].astype(int)
+            gating = (getattr(self, "phase2_gating", "soft") or "soft").lower()
+            if gating == "threshold":
+                participating_indices = np.where(reputation_before >= float(self.reputation_threshold))[0].astype(int)
+            elif gating == "topk":
+                k_frac = float(getattr(self, "phase2_topk_frac", 0.8) or 0.8)
+                k_frac = min(max(k_frac, 0.0), 1.0)
+                k = max(int(getattr(self, "phase2_min_keep", 1) or 1), int(np.ceil(k_frac * num_clients)))
+                order = np.argsort(-reputation_before)  # descending
+                participating_indices = order[: min(k, num_clients)].astype(int)
+            else:
+                participating_indices = np.arange(num_clients, dtype=int)
+
             if participating_indices.size == 0:
-                print(
-                    f"TriGuardFL: no clients with reputation >= {self.reputation_threshold} "
-                    f"at global_epoch={global_epoch}; returning zero update."
-                )
-                zero_grad = np.zeros_like(global_weights_vec)
-                return wrapup_aggregated_grads(
-                    zero_grad, self.args.algorithm, self.global_model, aggregated=True
-                )
+                # Never return a zero update; fall back to all clients.
+                participating_indices = np.arange(num_clients, dtype=int)
 
         updates = updates[participating_indices]
         num_participants = len(updates)
@@ -347,15 +505,33 @@ class TriGuardFL(AggregatorBase):
             self.args.algorithm, updates, self.global_model, vector_form=True
         )
 
+        # Work in delta space for both detection and aggregation.
+        deltas = local_model_vecs - global_weights_vec
+        delta_norms = np.linalg.norm(deltas, axis=1)
+
         cosine_similarity = _median_cosine_similarities(
             local_model_vecs, global_weights_vec, self.args.learning_rate
         )
-        malicious_candidate_index = _malicious_detection_candidate(
+        cos_candidates = _malicious_detection_candidate(
             cosine_similarity,
             self.cos_threshold,
             method=getattr(self, "cos_filter_method", "threshold"),
             significance_level=getattr(self, "cos_significance", 0.02),
         )
+        norm_candidates = _norm_outlier_candidates(
+            delta_norms,
+            method=getattr(self, "norm_filter_method", "none"),
+            k=getattr(self, "norm_filter_k", 3.5),
+            percentile=getattr(self, "norm_filter_percentile", 0.95),
+        )
+        rule = (getattr(self, "candidate_rule", "cos_or_norm") or "cos_or_norm").lower()
+        if rule == "cos":
+            malicious_candidate_index = cos_candidates
+        elif rule == "cos_or_norm":
+            malicious_candidate_index = sorted(set(cos_candidates).union(norm_candidates))
+        else:
+            raise ValueError(f"Unknown candidate_rule: {rule}")
+
         print("\nCosine Similarity:", cosine_similarity)
         malicious_candidate_global = (
             participating_indices[np.asarray(malicious_candidate_index, dtype=int)].tolist()
@@ -364,7 +540,28 @@ class TriGuardFL(AggregatorBase):
         )
         print("Detected Potential Attackers:", malicious_candidate_global)
 
-        w_locals_malicious_candidate = [local_model_vecs[i] for i in malicious_candidate_index]
+        # Limit expensive phase-2 eval to the most suspicious candidates.
+        max_cand = int(getattr(self, "max_phase2_candidates", 5) or 0)
+        if max_cand > 0 and len(malicious_candidate_index) > max_cand:
+            chosen: List[int] = []
+            # Prioritize low-cos candidates.
+            for i in sorted(cos_candidates, key=lambda j: cosine_similarity[j]):
+                if i in malicious_candidate_index and i not in chosen:
+                    chosen.append(i)
+                if len(chosen) >= max_cand:
+                    break
+            # Then prioritize high-norm candidates.
+            if len(chosen) < max_cand:
+                for i in sorted(norm_candidates, key=lambda j: delta_norms[j], reverse=True):
+                    if i in malicious_candidate_index and i not in chosen:
+                        chosen.append(i)
+                    if len(chosen) >= max_cand:
+                        break
+            malicious_candidate_eval = chosen
+        else:
+            malicious_candidate_eval = list(malicious_candidate_index)
+
+        w_locals_malicious_candidate = [local_model_vecs[i] for i in malicious_candidate_eval]
         w_locals_benign_candidate = [
             local_model_vecs[i] for i in range(num_participants) if i not in malicious_candidate_index
         ]
@@ -373,25 +570,48 @@ class TriGuardFL(AggregatorBase):
 
         w_glob_benign_candidate = np.mean(np.stack(w_locals_benign_candidate, axis=0), axis=0)
 
-        list_acc_local, list_loss_local = [], []
-        for c in range(len(malicious_candidate_index) + 1):
-            net_server_local = deepcopy(self.global_model)
-            if c < len(malicious_candidate_index):
-                vec2model(w_locals_malicious_candidate[c], net_server_local)
-            else:
-                vec2model(w_glob_benign_candidate, net_server_local)
-            acc_total, loss_total = self.server_evaluator.evaluate_by_class(net_server_local)
-            list_acc_local.append(acc_total)
-            list_loss_local.append(loss_total)
+        malicious: List[int] = []
+        if malicious_candidate_eval:
+            list_acc_local, list_loss_local = [], []
+            for c in range(len(malicious_candidate_eval) + 1):
+                net_server_local = deepcopy(self.global_model)
+                if c < len(malicious_candidate_eval):
+                    vec2model(w_locals_malicious_candidate[c], net_server_local)
+                else:
+                    vec2model(w_glob_benign_candidate, net_server_local)
+                acc_total, loss_total = self.server_evaluator.evaluate_by_class(net_server_local)
+                list_acc_local.append(acc_total)
+                list_loss_local.append(loss_total)
 
-        malicious = _client_detection(
-            list_acc_local, list_loss_local, malicious_candidate_index, self.significance
-        )
+            phase2 = (getattr(self, "phase2_method", "robust") or "robust").lower()
+            if phase2 == "t_test":
+                malicious = _client_detection(
+                    list_acc_local, list_loss_local, malicious_candidate_eval, self.significance
+                )
+            elif phase2 == "robust":
+                malicious = _client_detection_robust_score(
+                    list_loss_local,
+                    malicious_candidate_eval,
+                    outlier_k=getattr(self, "phase2_outlier_k", 3.0),
+                    abs_k=getattr(self, "phase2_abs_k", 3.0),
+                    min_pos_frac=getattr(self, "phase2_min_pos_frac", 0.6),
+                )
+            else:
+                raise ValueError(f"Unknown phase2_method: {phase2}")
+
         malicious_global = [int(participating_indices[i]) for i in (malicious or [])]
 
         alpha_part = self.alphas[participating_indices]
         beta_part = self.betas[participating_indices]
-        rep, alpha_part, beta_part = _client_reputation(self.discount, malicious, alpha_part, beta_part)
+        rep, alpha_part, beta_part = _client_reputation(
+            self.discount,
+            malicious,
+            alpha_part,
+            beta_part,
+            alpha_inc=getattr(self, "rep_alpha_inc", 1.0),
+            beta_inc=getattr(self, "rep_beta_inc", 1.0),
+            hard_zero=bool(getattr(self, "rep_hard_zero", False)),
+        )
         self.alphas[participating_indices] = alpha_part
         self.betas[participating_indices] = beta_part
 
@@ -399,8 +619,29 @@ class TriGuardFL(AggregatorBase):
         reputation_after = self.alphas / (self.alphas + self.betas + 1e-12)
         print("Reputation:", reputation_after)
 
-        aggregated_model_vec = _weighted_average_vectors(local_model_vecs, rep)
-        aggregated_grad = aggregated_model_vec - global_weights_vec
+        # Aggregate in delta space with optional norm clipping.
+        clip_value = float(getattr(self, "delta_clip_value", 0.0) or 0.0)
+        if clip_value > 0:
+            clip_norm = clip_value
+        else:
+            method = (getattr(self, "delta_clip_method", "mad") or "mad").lower()
+            if method == "none":
+                clip_norm = 0.0
+            elif method == "percentile":
+                q = float(getattr(self, "delta_clip_percentile", 0.95) or 0.95)
+                q = min(max(q, 0.0), 1.0)
+                clip_norm = float(np.quantile(delta_norms, q)) if delta_norms.size else 0.0
+            elif method == "mad":
+                med, mad = _robust_median_mad(delta_norms)
+                scale = 1.4826 * mad
+                k = float(getattr(self, "delta_clip_k", 3.0) or 3.0)
+                clip_norm = float(med + k * scale) if scale > 0 else 0.0
+            else:
+                raise ValueError(f"Unknown delta_clip_method: {method}")
+
+        deltas_clipped = _clip_vectors_by_l2_norm(deltas, clip_norm)
+        aggregated_delta = _weighted_average_vectors(deltas_clipped, rep)
+        aggregated_grad = aggregated_delta
         return wrapup_aggregated_grads(
             aggregated_grad, self.args.algorithm, self.global_model, aggregated=True
         )
