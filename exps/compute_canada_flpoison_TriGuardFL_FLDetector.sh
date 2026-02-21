@@ -37,7 +37,7 @@ experiment_id=0
 # 参数网格（可修改）
 # -------------------
 # 选择要跑的算法（不要求每个 {algorithm}_{dataset}_config.yaml 都存在）
-algorithms=("FedSGD") # 例如 "FedSGD" "FedOpt"
+algorithms=("FedAvg") # 例如 "FedAvg" "FedOpt" "FedSGD"
 
 # 指定数据集和模型的匹配关系（参考另外三个 Compute Canada 脚本的默认搭配）
 # 格式：dataset|model

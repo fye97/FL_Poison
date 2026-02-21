@@ -37,7 +37,7 @@ experiment_id=0
 # 参数网格（可修改）
 # -------------------
 # 选择要跑的算法和数据集（不要求每个 {algorithm}_{dataset}_config.yaml 都存在）
-algorithms=("FedSGD") # 例如 "FedSGD" "FedOpt"
+algorithms=("FedAvg") # 例如 "FedAvg" "FedOpt" "FedSGD"
 datasets=("CIFAR10") # 例如 "MNIST" "FashionMNIST" "EMNIST" "CIFAR10" "CIFAR100" "CINIC10" "CHMNIST" "TinyImageNet"
 
 # 场景列表：alg|dataset|config_file
