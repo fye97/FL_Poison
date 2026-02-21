@@ -14,8 +14,11 @@
 set -euo pipefail
 
 # 加载环境（按你的 Compute Canada 环境修改）
-source ~/FL_Poison/.venv/bin/activate
-cd ~/FL_Poison
+CODE_SRC_ROOT="${CODE_SRC_ROOT:-$HOME/FL_Poison}"
+DATA_SRC_ROOT="${DATA_SRC_ROOT:-$CODE_SRC_ROOT/data}"
+
+source "${CODE_SRC_ROOT}/.venv/bin/activate"
+cd "${CODE_SRC_ROOT}"
 
 PYTHON_BIN="${PYTHON_BIN:-python}"
 
@@ -87,7 +90,7 @@ seeds=("42") # base seed; repeated experiments will use 42 + experiment_id
 
 # attack / defense 组合
 attacks=("NoAttack" "MinMax" "MinSum" "ALIE" "FangAttack")
-defenses=("Mean" "TriGuardFL" "FLTrust" "MultiKrum" "NormClipping")
+defenses=("Mean" "TriGuardFL" "FLDetector" "FLTrust" "MultiKrum" "NormClipping")
 
 n_scenarios=${#scenarios[@]}
 n_dist_specs=${#dist_specs[@]}
@@ -282,7 +285,7 @@ echo "  num_adv=${num_adv} seed=${seed}"
 echo "  num_experiments=${num_experiments} experiment_id=${experiment_id}"
 echo "  attack=${attack} defense=${defense}"
 
-# 输出到 $SCRATCH（避免写 home；可按需修改）
+# 最终输出目录（写到 $SCRATCH；训练过程会尽量用 $SLURM_TMPDIR）
 scratch_root="${SCRATCH:-${HOME}/scratch}"
 log_dir="${scratch_root}/FL_Poison/logs/${algorithm}/${dataset}_${model}/${distribution}"
 mkdir -p "${log_dir}"
@@ -296,7 +299,7 @@ if [ "${distribution}" = "class-imbalanced_iid" ] && [ -n "${im_iid_gamma}" ]; t
 fi
 
 cfg_tag="_cfg${config_name%.yaml}"
-output_file="${log_dir}/${dataset}_${model}_${distribution}_${attack}_${defense}_${epochs}_${num_clients}_${learning_rate}_${algorithm}_adv${num_adv}_seed${seed}${extra_tag}${cfg_tag}.txt"
+dest_output_file="${log_dir}/${dataset}_${model}_${distribution}_${attack}_${defense}_${epochs}_${num_clients}_${learning_rate}_${algorithm}_adv${num_adv}_seed${seed}${extra_tag}${cfg_tag}.txt"
 
 # 传入重复实验参数（每个 array task 内串行重复）
 exp_args=(--num_experiments "${num_experiments}" --experiment_id "${experiment_id}")
@@ -368,7 +371,88 @@ if [ "${cuda_ok}" -ne 1 ]; then
   exit 1
 fi
 
-# 执行程序：每个 array task 跑一个场景
+# -------------------
+# Use node-local storage to reduce parallel filesystem I/O
+# - stage code + required dataset subset into $SLURM_TMPDIR
+# - write logs/plots locally, then copy once to $SCRATCH at the end
+# -------------------
+local_root="${SLURM_TMPDIR:-}"
+local_repo=""
+local_results_dir=""
+if [ -n "${local_root}" ] && [ -d "${local_root}" ]; then
+  local_run_dir="${local_root}/flpoison_${SLURM_JOB_ID:-0}_${SLURM_ARRAY_TASK_ID:-0}"
+  local_repo="${local_run_dir}/FL_Poison"
+  local_results_dir="${local_run_dir}/results"
+
+  mkdir -p "${local_repo}" "${local_results_dir}"
+
+  _copy_dir() {
+    local src="$1"
+    local dst="$2"
+    if command -v rsync >/dev/null 2>&1; then
+      rsync -a "${src}" "${dst}"
+    else
+      cp -a "${src}" "${dst}"
+    fi
+  }
+
+  _copy_file() {
+    local src="$1"
+    local dst="$2"
+    if command -v rsync >/dev/null 2>&1; then
+      rsync -a "${src}" "${dst}"
+    else
+      cp -a "${src}" "${dst}"
+    fi
+  }
+
+  # Stage code (exclude large/ephemeral dirs).
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete \
+      --exclude '.git' \
+      --exclude '.idea' \
+      --exclude '.venv' \
+      --exclude 'logs' \
+      --exclude 'running_caches' \
+      --exclude 'data' \
+      "${CODE_SRC_ROOT}/" "${local_repo}/"
+  else
+    cp -a "${CODE_SRC_ROOT}/." "${local_repo}/"
+    rm -rf "${local_repo}/.git" "${local_repo}/.idea" "${local_repo}/.venv" "${local_repo}/logs" "${local_repo}/running_caches" "${local_repo}/data" || true
+  fi
+
+  # Stage only the required dataset to local disk (avoid downloading).
+  mkdir -p "${local_repo}/data"
+  if [ -d "${DATA_SRC_ROOT}" ]; then
+    case "${dataset}" in
+      CIFAR100)
+        [ -d "${DATA_SRC_ROOT}/cifar-100-python" ] && _copy_dir "${DATA_SRC_ROOT}/cifar-100-python" "${local_repo}/data/" || true
+        ;;
+      *)
+        _copy_dir "${DATA_SRC_ROOT}/" "${local_repo}/data/" || true
+        ;;
+    esac
+  else
+    echo "WARN: DATA_SRC_ROOT not found: ${DATA_SRC_ROOT}. Dataset may download and stress shared FS." >&2
+  fi
+else
+  echo "WARN: SLURM_TMPDIR not set; running on shared filesystem (may stress I/O)." >&2
+fi
+
+# Use local repo when available; otherwise fall back to shared code dir.
+run_repo="${CODE_SRC_ROOT}"
+if [ -n "${local_repo}" ] && [ -d "${local_repo}" ]; then
+  run_repo="${local_repo}"
+fi
+
+# Local output file (copied to $SCRATCH at the end).
+output_file="${dest_output_file}"
+if [ -n "${local_results_dir}" ] && [ -d "${local_results_dir}" ]; then
+  output_file="${local_results_dir}/$(basename "${dest_output_file}")"
+fi
+
+cd "${run_repo}"
+
 "${PYTHON_BIN}" -u main.py \
   -config="${config_file}" \
   -alg "${algorithm}" \
@@ -387,3 +471,16 @@ fi
   -defense "${defense}" \
   -gidx "${gpu_idx}" \
   -o "${output_file}"
+
+# Copy results back once (logs + plots are adjacent to output_file).
+if [ -n "${local_results_dir}" ] && [ -d "${local_results_dir}" ]; then
+  mkdir -p "${log_dir}"
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a "${local_results_dir}/" "${log_dir}/"
+  else
+    cp -a "${local_results_dir}/." "${log_dir}/"
+  fi
+  echo "Saved results to: ${log_dir}" >&2
+else
+  echo "Saved results to: ${log_dir}" >&2
+fi
