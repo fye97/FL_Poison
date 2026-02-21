@@ -79,7 +79,13 @@ def vec2model(vector, model, plus=False, ignorebn=False):
             param_tensor = vec_tensor[curr_idx:curr_idx + numel].view(shape)
 
             if plus:
-                value.add_(param_tensor)
+                # Some buffers in state_dict are integer tensors (e.g., BatchNorm's
+                # `num_batches_tracked` is int64). In-place add_ requires matching dtype,
+                # while copy_ supports casting. Cast updates for non-float buffers.
+                if value.dtype != param_tensor.dtype:
+                    value.add_(param_tensor.to(dtype=value.dtype))
+                else:
+                    value.add_(param_tensor)
             else:
                 value.copy_(param_tensor)
 
