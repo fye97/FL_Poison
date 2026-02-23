@@ -36,25 +36,17 @@ experiment_id=0
 # -------------------
 # 参数网格（可修改）
 # -------------------
-# 选择要跑的算法（不要求每个 {algorithm}_{dataset}_config.yaml 都存在）
+# 选择要跑的算法和数据集（不要求每个 {algorithm}_{dataset}_config.yaml 都存在）
 algorithms=("FedAvg") # 例如 "FedAvg" "FedOpt" "FedSGD"
+datasets=("FashionMNIST") # 例如 "MNIST" "FashionMNIST" "EMNIST" "CIFAR10" "CIFAR100" "CINIC10" "CHMNIST" "TinyImageNet"
 
-# 指定数据集和模型的匹配关系（参考另外三个 Compute Canada 脚本的默认搭配）
-# 格式：dataset|model
-dataset_model_pairs=(
-  "CIFAR10|vgg19"
-  "CIFAR100|resnet18"
-  "TinyImageNet|resnet50"
-)
-
-# 场景列表：alg|dataset|model|config_file
+# 场景列表：alg|dataset|config_file
 # 逻辑：
 # - 优先用 ./configs/{alg}_{dataset}_config.yaml
 # - 不存在则选一个“同模态”fallback config，并通过 CLI 覆盖 -alg/-data
 scenarios=()
 for alg in "${algorithms[@]}"; do
-  for pair in "${dataset_model_pairs[@]}"; do
-    IFS='|' read -r ds model <<<"${pair}"
+  for ds in "${datasets[@]}"; do
     cfg="./configs/${alg}_${ds}_config.yaml"
     if [ ! -f "${cfg}" ]; then
       case "${ds}" in
@@ -74,7 +66,7 @@ for alg in "${algorithms[@]}"; do
       fi
       echo "INFO: ./configs/${alg}_${ds}_config.yaml missing; use fallback $(basename "${cfg}") + CLI overrides (-alg/-data)." >&2
     fi
-    scenarios+=("${alg}|${ds}|${model}|${cfg}")
+    scenarios+=("${alg}|${ds}|${cfg}")
   done
 done
 
@@ -89,19 +81,20 @@ dist_specs=(
 )
 
 # 训练超参（可用 "__cfg__" 表示使用 config 默认值）
+models=("lenet") # 例如 "resnet18" "lenet"
 epochs_list=("200") # 例如 "50" "100"
 num_clients_list=("20") # 例如 "20" "50"
 learning_rates=("0.05") # 例如 "0.01" "0.05"
-num_advs=("0.05" "0.1") # 攻击者数量：支持比例（<1）或整数（>=1），例如 "0.2" 或 "4"
+num_advs=("0.05" "0.1" "0.2" "0.3") # 攻击者数量：支持比例（<1）或整数（>=1），例如 "0.2" 或 "4"
 seeds=("42") # base seed; repeated experiments will use 42 + experiment_id
 
 # attack / defense 组合
 attacks=("NoAttack" "MinMax" "MinSum" "ALIE" "FangAttack")
-# 只跑这两种防御（注意大小写必须匹配代码里的 aggregator 名称）
-defenses=("TriGuardFL" "FLDetector")
+defenses=("Mean" "TriGuardFL" "FLDetector" "FLTrust" "MultiKrum" "NormClipping")
 
 n_scenarios=${#scenarios[@]}
 n_dist_specs=${#dist_specs[@]}
+n_models=${#models[@]}
 n_epochs=${#epochs_list[@]}
 n_clients=${#num_clients_list[@]}
 n_lrs=${#learning_rates[@]}
@@ -110,23 +103,23 @@ n_seeds=${#seeds[@]}
 n_attacks=${#attacks[@]}
 n_defenses=${#defenses[@]}
 
-if [ "${n_scenarios}" -eq 0 ] || [ "${n_dist_specs}" -eq 0 ] || [ "${n_epochs}" -eq 0 ] || \
+if [ "${n_scenarios}" -eq 0 ] || [ "${n_dist_specs}" -eq 0 ] || [ "${n_models}" -eq 0 ] || [ "${n_epochs}" -eq 0 ] || \
    [ "${n_clients}" -eq 0 ] || [ "${n_lrs}" -eq 0 ] || [ "${n_advs}" -eq 0 ] || [ "${n_seeds}" -eq 0 ] || \
    [ "${n_attacks}" -eq 0 ] || [ "${n_defenses}" -eq 0 ]; then
   echo "ERROR: one of the grid arrays is empty." >&2
   exit 1
 fi
 
-total=$((n_scenarios * n_dist_specs * n_epochs * n_clients * n_lrs * n_advs * n_seeds * n_attacks * n_defenses))
+total=$((n_scenarios * n_dist_specs * n_models * n_epochs * n_clients * n_lrs * n_advs * n_seeds * n_attacks * n_defenses))
 
 if [ -z "${SLURM_ARRAY_TASK_ID:-}" ]; then
   echo "TOTAL combinations: ${total}"
   echo "Grid dims:"
-  echo "  scenarios=${n_scenarios} (alg+dataset+model), dist_specs=${n_dist_specs}"
-  echo "  epochs_list=${n_epochs}, num_clients_list=${n_clients}, learning_rates=${n_lrs}"
+  echo "  scenarios=${n_scenarios}, dist_specs=${n_dist_specs}"
+  echo "  models=${n_models}, epochs_list=${n_epochs}, num_clients_list=${n_clients}, learning_rates=${n_lrs}"
   echo "  num_advs=${n_advs}, seeds=${n_seeds}, attacks=${n_attacks}, defenses=${n_defenses}"
   echo "Submit example:"
-  echo "  sbatch --array=0-$((total - 1))%${array_parallel} exps/compute_canada_flpoison_TriGuardFL_FLDetector.sh"
+  echo "  sbatch --array=0-$((total - 1))%${array_parallel} exps/compute_canada_flpoison_FashionMNIST.sh"
   exit 0
 fi
 
@@ -145,6 +138,7 @@ adv_idx=$((idx % n_advs)); idx=$((idx / n_advs))
 lr_idx=$((idx % n_lrs)); idx=$((idx / n_lrs))
 client_idx=$((idx % n_clients)); idx=$((idx / n_clients))
 epoch_idx=$((idx % n_epochs)); idx=$((idx / n_epochs))
+model_idx=$((idx % n_models)); idx=$((idx / n_models))
 distspec_idx=$((idx % n_dist_specs)); idx=$((idx / n_dist_specs))
 scenario_idx=$((idx % n_scenarios)); idx=$((idx / n_scenarios))
 
@@ -154,10 +148,11 @@ if [ "${idx}" -ne 0 ]; then
 fi
 
 scenario="${scenarios[scenario_idx]}"
-IFS='|' read -r algorithm dataset model config_file <<<"${scenario}"
+IFS='|' read -r algorithm dataset config_file <<<"${scenario}"
 dist_spec="${dist_specs[distspec_idx]}"
 IFS='|' read -r distribution dirichlet_alpha im_iid_gamma <<<"${dist_spec}"
 
+model="${models[model_idx]}"
 epochs="${epochs_list[epoch_idx]}"
 num_clients="${num_clients_list[client_idx]}"
 learning_rate="${learning_rates[lr_idx]}"
@@ -376,7 +371,6 @@ if [ "${cuda_ok}" -ne 1 ]; then
   exit 1
 fi
 
-# 执行程序：每个 array task 跑一个场景
 # -------------------
 # Use node-local storage to reduce parallel filesystem I/O
 # - stage code + required dataset subset into $SLURM_TMPDIR
@@ -423,7 +417,6 @@ if [ -n "${local_root}" ] && [ -d "${local_root}" ]; then
       --exclude 'data' \
       "${CODE_SRC_ROOT}/" "${local_repo}/"
   else
-    # Best-effort fallback; assume GNU cp supports -a.
     cp -a "${CODE_SRC_ROOT}/." "${local_repo}/"
     rm -rf "${local_repo}/.git" "${local_repo}/.idea" "${local_repo}/.venv" "${local_repo}/logs" "${local_repo}/running_caches" "${local_repo}/data" || true
   fi
@@ -435,18 +428,7 @@ if [ -n "${local_root}" ] && [ -d "${local_root}" ]; then
       CIFAR10)
         [ -d "${DATA_SRC_ROOT}/cifar-10-batches-py" ] && _copy_dir "${DATA_SRC_ROOT}/cifar-10-batches-py" "${local_repo}/data/" || true
         ;;
-      CIFAR100)
-        [ -d "${DATA_SRC_ROOT}/cifar-100-python" ] && _copy_dir "${DATA_SRC_ROOT}/cifar-100-python" "${local_repo}/data/" || true
-        ;;
-      TinyImageNet)
-        [ -d "${DATA_SRC_ROOT}/tiny-imagenet-200" ] && _copy_dir "${DATA_SRC_ROOT}/tiny-imagenet-200" "${local_repo}/data/" || true
-        ;;
-      HAR)
-        [ -d "${DATA_SRC_ROOT}/UCI HAR Dataset" ] && _copy_dir "${DATA_SRC_ROOT}/UCI HAR Dataset" "${local_repo}/data/" || true
-        [ -f "${DATA_SRC_ROOT}/uci_har_cache_v1.npz" ] && _copy_file "${DATA_SRC_ROOT}/uci_har_cache_v1.npz" "${local_repo}/data/" || true
-        ;;
       *)
-        # Unknown dataset; copy whatever exists (may be expensive).
         _copy_dir "${DATA_SRC_ROOT}/" "${local_repo}/data/" || true
         ;;
     esac
