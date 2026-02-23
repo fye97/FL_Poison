@@ -82,7 +82,7 @@ dist_specs=(
 
 # 训练超参（可用 "__cfg__" 表示使用 config 默认值）
 models=("resnet50") # 例如 "resnet18" "lenet"
-epochs_list=("300") # 例如 "50" "100"
+epochs_list=("200") # 例如 "50" "100"
 num_clients_list=("20") # 例如 "20" "50"
 learning_rates=("0.05") # 例如 "0.01" "0.05"
 num_advs=( "0.2" "0.3" "0.4") # 攻击者数量：支持比例（<1）或整数（>=1），例如 "0.2" 或 "4"

@@ -38,7 +38,7 @@ experiment_id=0
 # -------------------
 # 选择要跑的算法和数据集（不要求每个 {algorithm}_{dataset}_config.yaml 都存在）
 algorithms=("FedAvg") # 例如 "FedAvg" "FedOpt" "FedSGD"
-datasets=("CIFAR10" "CIFAR100" "TinyImageNet") # 例如 "MNIST" "FashionMNIST" "EMNIST" "CIFAR10" "CIFAR100" "CINIC10" "CHMNIST" "TinyImageNet"
+datasets=("CIFAR10") # 例如 "MNIST" "FashionMNIST" "EMNIST" "CIFAR10" "CIFAR100" "CINIC10" "CHMNIST" "TinyImageNet"
 
 # 场景列表：alg|dataset|config_file
 # 逻辑：
@@ -81,7 +81,7 @@ dist_specs=(
 )
 
 # 训练超参（可用 "__cfg__" 表示使用 config 默认值）
-models=("vgg11" "resnet18") # 例如 "resnet18" "lenet"
+models=("vgg19") # 例如 "resnet18" "lenet"
 epochs_list=("200") # 例如 "50" "100"
 num_clients_list=("20") # 例如 "20" "50"
 learning_rates=("0.05") # 例如 "0.01" "0.05"
@@ -90,7 +90,7 @@ seeds=("42") # base seed; repeated experiments will use 42 + experiment_id
 
 # attack / defense 组合
 attacks=("NoAttack" "MinMax" "MinSum" "ALIE" "FangAttack")
-defenses=("Mean" "TriGuardFL" "FLDetector" "FLTrust" "MultiKrum" "NormClipping")
+defenses=("FLTrust")
 
 n_scenarios=${#scenarios[@]}
 n_dist_specs=${#dist_specs[@]}
@@ -119,7 +119,7 @@ if [ -z "${SLURM_ARRAY_TASK_ID:-}" ]; then
   echo "  models=${n_models}, epochs_list=${n_epochs}, num_clients_list=${n_clients}, learning_rates=${n_lrs}"
   echo "  num_advs=${n_advs}, seeds=${n_seeds}, attacks=${n_attacks}, defenses=${n_defenses}"
   echo "Submit example:"
-  echo "  sbatch --array=0-$((total - 1))%${array_parallel} exps/compute_canada_flpoison.sh"
+  echo "  sbatch --array=0-$((total - 1))%${array_parallel} exps/compute_canada_flpoison_CIFAR10_FLTrust.sh"
   exit 0
 fi
 
@@ -427,16 +427,6 @@ if [ -n "${local_root}" ] && [ -d "${local_root}" ]; then
     case "${dataset}" in
       CIFAR10)
         [ -d "${DATA_SRC_ROOT}/cifar-10-batches-py" ] && _copy_dir "${DATA_SRC_ROOT}/cifar-10-batches-py" "${local_repo}/data/" || true
-        ;;
-      CIFAR100)
-        [ -d "${DATA_SRC_ROOT}/cifar-100-python" ] && _copy_dir "${DATA_SRC_ROOT}/cifar-100-python" "${local_repo}/data/" || true
-        ;;
-      TinyImageNet)
-        [ -d "${DATA_SRC_ROOT}/tiny-imagenet-200" ] && _copy_dir "${DATA_SRC_ROOT}/tiny-imagenet-200" "${local_repo}/data/" || true
-        ;;
-      HAR)
-        [ -d "${DATA_SRC_ROOT}/UCI HAR Dataset" ] && _copy_dir "${DATA_SRC_ROOT}/UCI HAR Dataset" "${local_repo}/data/" || true
-        [ -f "${DATA_SRC_ROOT}/uci_har_cache_v1.npz" ] && _copy_file "${DATA_SRC_ROOT}/uci_har_cache_v1.npz" "${local_repo}/data/" || true
         ;;
       *)
         _copy_dir "${DATA_SRC_ROOT}/" "${local_repo}/data/" || true
