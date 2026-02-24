@@ -85,7 +85,7 @@ models=("resnet18") # 例如 "resnet18" "lenet"
 epochs_list=("200") # 例如 "50" "100"
 num_clients_list=("20") # 例如 "20" "50"
 learning_rates=("0.05") # 例如 "0.01" "0.05"
-num_advs=("0.1") # 攻击者数量：支持比例（<1）或整数（>=1），例如 "0.2" 或 "4"
+num_advs=("0.1" "0.2" "0.3") # 攻击者数量：支持比例（<1）或整数（>=1），例如 "0.2" 或 "4"
 seeds=("42") # base seed; repeated experiments will use 42 + experiment_id
 
 # attack / defense 组合
