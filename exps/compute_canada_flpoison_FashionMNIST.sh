@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --time=0-12:00:00
+#SBATCH --time=0-03:00:00
 #SBATCH --account=def-lincai
-#SBATCH --gpus=nvidia_h100_80gb_hbm3_2g.20gb:1
+#SBATCH --gpus=nvidia_h100_80gb_hbm3_1g.10gb:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 #SBATCH --requeue
@@ -27,6 +27,7 @@ PYTHON_BIN="${PYTHON_BIN:-python}"
 # -------------------
 gpu_idx=0 # 通常 Slurm 下 CUDA_VISIBLE_DEVICES 已重映射为 0
 array_parallel="${ARRAY_PARALLEL:-3}" # 对应 sbatch --array=...%${array_parallel}
+num_workers_override="${NUM_WORKERS:-}" # 可选：通过环境变量覆盖 DataLoader num_workers
 
 # 重复实验（写死）
 # - seed 从 yaml/CLI 的 seed 开始，按 experiment_id 递增
@@ -85,7 +86,7 @@ models=("lenet") # 例如 "resnet18" "lenet"
 epochs_list=("200") # 例如 "50" "100"
 num_clients_list=("20") # 例如 "20" "50"
 learning_rates=("0.05") # 例如 "0.01" "0.05"
-num_advs=("0.05" "0.1" "0.2" "0.3") # 攻击者数量：支持比例（<1）或整数（>=1），例如 "0.2" 或 "4"
+num_advs=("0.1" "0.2" "0.3") # 攻击者数量：支持比例（<1）或整数（>=1），例如 "0.2" 或 "4"
 seeds=("42") # base seed; repeated experiments will use 42 + experiment_id
 
 # attack / defense 组合
@@ -275,6 +276,11 @@ else
   seed_args=(-seed "${seed}")
 fi
 
+worker_args=()
+if [ -n "${num_workers_override}" ]; then
+  worker_args=(-num_workers "${num_workers_override}")
+fi
+
 echo "Running:"
 echo "  config=${config_name}"
 echo "  scenario_alg=${algorithm} (cfg_alg=${cfg_algorithm})"
@@ -282,6 +288,7 @@ echo "  scenario_data=${dataset} (cfg_data=${cfg_dataset}) model=${model}"
 echo "  distribution=${distribution} dirichlet_alpha=${dirichlet_alpha} im_iid_gamma=${im_iid_gamma}"
 echo "  epochs=${epochs} num_clients=${num_clients} lr=${learning_rate}"
 echo "  num_adv=${num_adv} seed=${seed}"
+echo "  num_workers_override=${num_workers_override:-__cfg__}"
 echo "  num_experiments=${num_experiments} experiment_id=${experiment_id}"
 echo "  attack=${attack} defense=${defense}"
 
@@ -466,6 +473,7 @@ cd "${run_repo}"
   "${lr_args[@]}" \
   "${adv_args[@]}" \
   "${seed_args[@]}" \
+  "${worker_args[@]}" \
   "${exp_args[@]}" \
   -attack "${attack}" \
   -defense "${defense}" \

@@ -123,6 +123,8 @@ def read_args():
                         help='Trigger Size (int, default: 5)')
     parser.add_argument('-gidx', '-gpu_idx', '--gpu_idx', type=int, nargs="+",
                         help='Index of GPU (int, default: 3, choice: 0, 1, 2, 3...)')
+    parser.add_argument('-num_workers', '--num_workers', type=int,
+                        help='Number of dataloader workers')
 
     # override attack_params or defense_params with dict string
     parser.add_argument(
