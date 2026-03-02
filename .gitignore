@@ -3,6 +3,14 @@ data/*
 !running_caches/*
 .DS_Store
 .vscode/*
+# Local analysis/plot scripts (keep local, don't track on GitHub)
+analyze_triguardfl_fp_fn.py
+build_test_loss_latex_tables.py
+extract_slurm_out_to_logs.py
+plot_adv_accuracy_sensitivity.py
+plot_alpha_accuracy_non_iid.py
+plot_scratch_results_2x2.py
+plot_triguardfl_reputation_curves.py
 # Byte-compiled / optimized / DLL files
 **/__pycache__/
 *.py[cod]
