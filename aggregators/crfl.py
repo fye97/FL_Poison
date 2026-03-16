@@ -23,9 +23,10 @@ class CRFL(AggregatorBase):
         # 1. prepare model updates, gradient updates, output layers of gradient updates
         # load global model at last epoch
         self.global_model = kwargs['last_global_model']
+        global_weights_vec = kwargs.get("global_weights_vec")
         # get model parameters updates and gradient updates
         gradient_updates = prepare_grad_updates(
-            self.args.algorithm, updates, self.global_model)
+            self.args.algorithm, updates, self.global_model, global_weights_vec=global_weights_vec)
 
         # 1. aggregate the gradient updates
         agg_update = np.mean(gradient_updates, axis=0)
@@ -34,4 +35,4 @@ class CRFL(AggregatorBase):
             min(1, self.norm_threshold / (np.linalg.norm(agg_update)+1e-10))
 
         # 3. add gaussian noise, note that the noise should be float32 to be consistent with the future torch dtype
-        return wrapup_aggregated_grads(addnoise(normed_agg_update,  self.noise_mean, self.noise_std), self.args.algorithm, self.global_model, aggregated=True)
+        return wrapup_aggregated_grads(addnoise(normed_agg_update,  self.noise_mean, self.noise_std), self.args.algorithm, self.global_model, aggregated=True, global_weights_vec=global_weights_vec)

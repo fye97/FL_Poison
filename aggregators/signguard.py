@@ -30,8 +30,9 @@ class SignGuard(AggregatorBase):
     def aggregate(self, updates, **kwargs):
         # load global model at last epoch
         self.global_model = kwargs['last_global_model']
+        global_weights_vec = kwargs.get("global_weights_vec")
         gradient_updates = prepare_grad_updates(
-            self.args.algorithm, updates, self.global_model)
+            self.args.algorithm, updates, self.global_model, global_weights_vec=global_weights_vec)
 
         # 1. filtering based on the norm of the client weights
         S1_benign_idx, median_norm, client_norms = self.norm_filtering(
@@ -47,7 +48,7 @@ class SignGuard(AggregatorBase):
         benign_clipped = (
             gradient_updates[benign_idx] / client_norms[benign_idx].reshape(-1, 1)) * grads_clipped_norm.reshape(-1, 1)
 
-        return wrapup_aggregated_grads(benign_clipped, self.args.algorithm, self.global_model)
+        return wrapup_aggregated_grads(benign_clipped, self.args.algorithm, self.global_model, global_weights_vec=global_weights_vec)
 
     def norm_filtering(self, gradient_updates):
         client_norms = np.linalg.norm(gradient_updates, axis=1)

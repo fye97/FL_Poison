@@ -97,12 +97,20 @@ def fl_run(args):
         the_server.update_global()
 
         # evalute the attack success rate (ASR) when a backdoor attack is launched
-        test_stats = coordinator.evaluate(
-            the_server, test_dataset, args, global_epoch)
+        should_eval = (
+            global_epoch == 0
+            or global_epoch == args.epochs - 1
+            or (global_epoch + 1) % max(1, int(args.eval_interval)) == 0
+        )
+        test_stats = {}
+        if should_eval:
+            test_stats = coordinator.evaluate(
+                the_server, test_dataset, args, global_epoch)
 
         # print the training and testing results of the current global_epoch
-        epoch_msg += "\t".join(
-            [f"{key}: {value:.4f}" for key, value in test_stats.items()])
+        if test_stats:
+            epoch_msg += "\t".join(
+                [f"{key}: {value:.4f}" for key, value in test_stats.items()])
         args.logger.info(epoch_msg)
         # clear memory (low-frequency to reduce overhead)
         if (global_epoch + 1) % 20 == 0:

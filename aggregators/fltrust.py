@@ -50,7 +50,7 @@ class FLTrust(AggregatorBase):
         self.global_model = kwargs['last_global_model']
         # get model parameters updates and gradient updates
         gradient_updates = prepare_grad_updates(
-            self.args.algorithm, updates, self.global_model)
+            self.args.algorithm, updates, self.global_model, global_weights_vec=kwargs.get("global_weights_vec"))
         gradient_updates = np.nan_to_num(
             gradient_updates, nan=0.0, posinf=0.0, neginf=0.0)
 
@@ -65,6 +65,7 @@ class FLTrust(AggregatorBase):
             self.algorithm,
             self.server_client.update.reshape(1, -1),
             self.global_model,
+            global_weights_vec=global_weights_vec,
         )
         root_grad_update = np.nan_to_num(
             root_grad_update, nan=0.0, posinf=0.0, neginf=0.0)
@@ -72,7 +73,7 @@ class FLTrust(AggregatorBase):
         if not np.isfinite(root_grad_norm) or root_grad_norm < 1e-12:
             agg_grad_updates = np.mean(gradient_updates, axis=0)
             return wrapup_aggregated_grads(
-                agg_grad_updates, self.args.algorithm, self.global_model, aggregated=True)
+                agg_grad_updates, self.args.algorithm, self.global_model, aggregated=True, global_weights_vec=global_weights_vec)
 
         # 3. get the weighted cosine similarity between the client updates and the server client update as trust score
         TS = cosine_similarity(
@@ -98,4 +99,4 @@ class FLTrust(AggregatorBase):
         agg_grad_updates = np.average(
             normed_updates, axis=0, weights=np.squeeze(TS))
 
-        return wrapup_aggregated_grads(agg_grad_updates, self.args.algorithm, self.global_model, aggregated=True)
+        return wrapup_aggregated_grads(agg_grad_updates, self.args.algorithm, self.global_model, aggregated=True, global_weights_vec=global_weights_vec)

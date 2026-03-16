@@ -29,6 +29,8 @@ class Client(Worker):
         if record_time:
             self.time_recorder = TimingRecorder(self.worker_id,
                                                 self.args.output)
+            self.load_global_model = self.time_recorder.timing_decorator(
+                self.load_global_model)
             self.local_training = self.time_recorder.timing_decorator(
                 self.local_training)
             self.fetch_updates = self.time_recorder.timing_decorator(

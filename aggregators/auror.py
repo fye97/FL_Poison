@@ -36,9 +36,10 @@ class Auror(AggregatorBase):
     def aggregate(self, updates, **kwargs):
         # 1. find the indicative features (indices in feature vector) via 2-clustering with center distance threshold
         self.global_model = kwargs['last_global_model']
+        global_weights_vec = kwargs.get("global_weights_vec")
         # get model parameters updates and gradient updates according to the algorithm type
         gradient_updates = prepare_grad_updates(
-            self.args.algorithm, updates, self.global_model)
+            self.args.algorithm, updates, self.global_model, global_weights_vec=global_weights_vec)
 
         # for the first 10 epoch, initialize and find the indicative_idx
         if self.epoch_cnt < self.indicative_find_epoch:
@@ -73,4 +74,4 @@ class Auror(AggregatorBase):
 
         benign_grad_updates = gradient_updates[np.where(
             labels == benign_label)]
-        return wrapup_aggregated_grads(benign_grad_updates, self.args.algorithm, self.global_model)
+        return wrapup_aggregated_grads(benign_grad_updates, self.args.algorithm, self.global_model, global_weights_vec=global_weights_vec)

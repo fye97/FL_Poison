@@ -25,8 +25,19 @@ class DPBase(PBase):
 
         args: poisoning_epoch is used to specify the epoch for poisoning, default is None
         """
+        device = getattr(self.args, "device", None)
+        pin_memory = getattr(device, "type", None) == "cuda"
+        num_workers = int(getattr(self.args, "num_workers", 0) or 0)
+        batch_size = self.args.batch_size if train_flag else getattr(
+            self.args, "eval_batch_size", self.args.batch_size)
+        loader_kwargs = {
+            "batch_size": batch_size,
+            "shuffle": train_flag,
+            "num_workers": num_workers,
+            "pin_memory": pin_memory,
+        }
         dataloader = torch.utils.data.DataLoader(
-            dataset, batch_size=self.args.batch_size, shuffle=train_flag, num_workers=self.args.num_workers, pin_memory=True)
+            dataset, **loader_kwargs)
 
         # compatability with the non-poisoining calls
         poison_epochs = False if poison_epochs is None else poison_epochs
@@ -83,7 +94,12 @@ class DPBase(PBase):
                 test_dataset, posioned_indices, test_trans)
             posioned_testset.poison_setup(self.synthesizer)
             posioned_testloader = torch.utils.data.DataLoader(
-                posioned_testset, batch_size=self.args.batch_size, shuffle=False, num_workers=self.args.num_workers, pin_memory=True)
+                posioned_testset,
+                batch_size=getattr(self.args, "eval_batch_size", self.args.batch_size),
+                shuffle=False,
+                num_workers=self.args.num_workers,
+                pin_memory=getattr(getattr(self.args, "device", None), "type", None) == "cuda",
+            )
         else:
             posioned_testloader = self.get_dataloader(
                 test_dataset, False, poison_epochs=True)

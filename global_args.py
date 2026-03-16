@@ -82,10 +82,14 @@ def read_args():
                         help='number of participating clients')
     parser.add_argument('-bs', '-batch_size', '--batch_size', type=int,
                         help='batch_size')
+    parser.add_argument('-eval_batch_size', '--eval_batch_size', type=int,
+                        help='batch_size used for evaluation/inference')
     parser.add_argument('-lr', '-learning_rate', '--learning_rate',
                         type=float, help='initial learning rate')
     parser.add_argument('-le', '-local_epochs', '--local_epochs', type=int,
                         help='local global_epoch')
+    parser.add_argument('-eval_interval', '--eval_interval', type=int,
+                        help='Run full evaluation every N global rounds')
     parser.add_argument('-model', '--model', choices=all_models)
     parser.add_argument('-data', '-dataset', '--dataset',
                         choices=['MNIST', 'FashionMNIST', 'CIFAR10', 'CINIC10', 'CIFAR100', 'EMNIST', 'CHMNIST', 'TinyImageNet', 'HAR'])
@@ -238,6 +242,10 @@ def single_preprocess(args):
     if not hasattr(args, 'log_stream') or args.log_stream is None:
         args.log_stream = True
     args.num_adv = frac_or_int_to_int(args.num_adv, args.num_clients)
+    if not hasattr(args, 'eval_batch_size') or args.eval_batch_size is None:
+        args.eval_batch_size = args.batch_size
+    if not hasattr(args, 'eval_interval') or args.eval_interval is None:
+        args.eval_interval = 1
 
     # ensure attack_params and defense_params attributes exist. when there is no params, set it to None.
     ensure_attr(args, 'attack_params')

@@ -19,8 +19,9 @@ class SimpleClustering(AggregatorBase):
     def aggregate(self, updates, **kwargs):
         # load global model at last epoch
         self.global_model = kwargs['last_global_model']
+        global_weights_vec = kwargs.get("global_weights_vec")
         gradient_updates = prepare_grad_updates(
-            self.args.algorithm, updates, self.global_model)
+            self.args.algorithm, updates, self.global_model, global_weights_vec=global_weights_vec)
 
         if self.clustering == "MeanShift":
             bandwidth = estimate_bandwidth(
@@ -38,4 +39,4 @@ class SimpleClustering(AggregatorBase):
                                  for i in range(n_cluster)])
         benign_idx = [int(idx) for idx in np.argwhere(labels == benign_label)]
 
-        return wrapup_aggregated_grads(gradient_updates[benign_idx], self.args.algorithm, self.global_model)
+        return wrapup_aggregated_grads(gradient_updates[benign_idx], self.args.algorithm, self.global_model, global_weights_vec=global_weights_vec)

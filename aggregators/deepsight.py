@@ -36,9 +36,10 @@ class DeepSight(AggregatorBase):
         # load global model at last epoch
         self.global_epoch = kwargs.get('global_epoch', None)
         self.global_model = kwargs['last_global_model']
+        global_weights_vec = kwargs.get("global_weights_vec")
         # get model parameters updates and gradient updates
         client_updated_model, gradient_updates = prepare_updates(
-            self.args.algorithm, updates, self.global_model, vector_form=False)
+            self.args.algorithm, updates, self.global_model, vector_form=False, global_weights_vec=global_weights_vec)
         # prepare the the (gradient) updates of output layers' parameter for each client
         self.ol_updates = np.array([
             ol_from_vector(
@@ -84,7 +85,7 @@ class DeepSight(AggregatorBase):
             np.linalg.norm(gradient_updates, axis=1)))
 
         # 6. aggregation
-        return wrapup_aggregated_grads(clipped_gradient_updates, self.args.algorithm, self.global_model)
+        return wrapup_aggregated_grads(clipped_gradient_updates, self.args.algorithm, self.global_model, global_weights_vec=global_weights_vec)
 
     def get_NEUPs_TEs(self):
         # get the Normalized Update Energy and Threshold Exceedings values for each client

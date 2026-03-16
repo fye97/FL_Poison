@@ -400,7 +400,7 @@ class TriGuardFL(AggregatorBase):
         if num_clients == 0:
             zero_grad = np.zeros_like(global_weights_vec)
             return wrapup_aggregated_grads(
-                zero_grad, self.args.algorithm, self.global_model, aggregated=True
+                zero_grad, self.args.algorithm, self.global_model, aggregated=True, global_weights_vec=global_weights_vec
             )
 
         if len(self.alphas) != num_clients:
@@ -430,7 +430,7 @@ class TriGuardFL(AggregatorBase):
         num_participants = len(updates)
 
         local_model_vecs, _ = prepare_updates(
-            self.args.algorithm, updates, self.global_model, vector_form=True
+            self.args.algorithm, updates, self.global_model, vector_form=True, global_weights_vec=global_weights_vec
         )
 
         # Work in delta space for both detection and aggregation.
@@ -536,5 +536,5 @@ class TriGuardFL(AggregatorBase):
         aggregated_delta = _weighted_average_vectors(deltas_clipped, rep)
         aggregated_grad = aggregated_delta
         return wrapup_aggregated_grads(
-            aggregated_grad, self.args.algorithm, self.global_model, aggregated=True
+            aggregated_grad, self.args.algorithm, self.global_model, aggregated=True, global_weights_vec=global_weights_vec
         )

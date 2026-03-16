@@ -24,8 +24,9 @@ class FLAME(AggregatorBase):
 
     def aggregate(self, updates, **kwargs):
         self.global_model = kwargs['last_global_model']
+        global_weights_vec = kwargs.get("global_weights_vec")
         model_updates, gradient_updates = prepare_updates(
-            self.args.algorithm, updates, self.global_model)
+            self.args.algorithm, updates, self.global_model, global_weights_vec=global_weights_vec)
         benign_idx = self.cosine_clustering(model_updates)
         aggregated_model, median_norm = self.adpative_clipping(
             self.global_model, gradient_updates, benign_idx)

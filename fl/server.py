@@ -30,8 +30,12 @@ class Server(Worker):
         if self.args.record_time:
             self.time_recorder = TimingRecorder(self.worker_id,
                                                 self.args.output)
+            self.collect_updates = self.time_recorder.timing_decorator(
+                self.collect_updates)
             self.aggregation = self.time_recorder.timing_decorator(
                 self.aggregation)
+            self.update_global = self.time_recorder.timing_decorator(
+                self.update_global)
 
     def set_algorithm(self, algorithm):
         self.algorithm = get_algorithm_handler(

@@ -26,9 +26,10 @@ class NormClipping(AggregatorBase):
         # 1. prepare model updates, gradient updates, output layers of gradient updates
         # load global model at last epoch
         self.global_model = kwargs['last_global_model']
+        global_weights_vec = kwargs.get("global_weights_vec")
         # get model parameters updates and gradient updates
         gradient_updates = prepare_grad_updates(
-            self.args.algorithm, updates, self.global_model)
+            self.args.algorithm, updates, self.global_model, global_weights_vec=global_weights_vec)
 
         normed_updates = normclipping(gradient_updates, self.norm_threshold)
         # add noise to clients' updates
@@ -36,4 +37,4 @@ class NormClipping(AggregatorBase):
             normed_updates = addnoise(
                 normed_updates,  self.noise_mean, self.noise_std)
 
-        return wrapup_aggregated_grads(normed_updates, self.args.algorithm, self.global_model)
+        return wrapup_aggregated_grads(normed_updates, self.args.algorithm, self.global_model, global_weights_vec=global_weights_vec)

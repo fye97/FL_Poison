@@ -27,9 +27,10 @@ class DnC(AggregatorBase):
     def aggregate(self, updates, **kwargs):
         # load global model at last epoch
         self.global_model = kwargs['last_global_model']
+        global_weights_vec = kwargs.get("global_weights_vec")
         # get model parameters updates and gradient updates
         gradient_updates = prepare_grad_updates(
-            self.args.algorithm, updates, self.global_model)
+            self.args.algorithm, updates, self.global_model, global_weights_vec=global_weights_vec)
 
         num_param = gradient_updates.shape[1]
         benign_idx = set(range(self.args.num_clients))
@@ -55,4 +56,4 @@ class DnC(AggregatorBase):
                 score) else np.arange(len(score))
             benign_idx = benign_idx.intersection(set(dnc_idx))
 
-        return wrapup_aggregated_grads(gradient_updates[list(benign_idx)], self.args.algorithm, self.global_model)
+        return wrapup_aggregated_grads(gradient_updates[list(benign_idx)], self.args.algorithm, self.global_model, global_weights_vec=global_weights_vec)

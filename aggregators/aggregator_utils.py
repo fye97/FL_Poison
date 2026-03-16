@@ -5,7 +5,7 @@ Methods used by only one aggregate function should not be placed here.
 from collections import defaultdict
 from copy import deepcopy
 import numpy as np
-from fl.models.model_utils import add_vec2model, model2vec, vec2model
+from fl.models.model_utils import model2vec, vec2model
 
 
 def L2_distances(updates):
@@ -25,20 +25,23 @@ def krum_compute_scores(distances, i, n, f):
     _s = sorted([dist for dist in distances[i].values()])[:n-f-1]
     return sum(_s)
 
-def prepare_grad_updates(algorithm, updates, global_model):
+def prepare_grad_updates(algorithm, updates, global_model=None, global_weights_vec=None):
 
     num_updates = len(updates)  # equal to num_clients
-    global_vec = model2vec(global_model)
+    if global_weights_vec is None and ("FedSGD" not in algorithm) and ("FedOpt" not in algorithm):
+        if global_model is None:
+            raise ValueError("global_model or global_weights_vec must be provided for FedAvg-style updates")
+        global_weights_vec = model2vec(global_model)
 
     # gradient_updates
     gradient_updates = (
             updates
             if ("FedSGD" in algorithm) or ("FedOpt" in algorithm)
-            else np.array([updates[cid] - global_vec for cid in range(num_updates)])
+            else updates - np.asarray(global_weights_vec).reshape(1, -1)
             )    
     return gradient_updates
    
-def prepare_updates(algorithm, updates, global_model, vector_form=True):
+def prepare_updates(algorithm, updates, global_model, vector_form=True, global_weights_vec=None):
     """
     receives the np array updates and the global model and returns the model updates and gradient updates
     Args:
@@ -46,16 +49,17 @@ def prepare_updates(algorithm, updates, global_model, vector_form=True):
     gradient_updates: vector-form (pseudo-)gradient updates for FedSGD, FedOpt
     """
     num_updates = len(updates)  # equal to num_clients
+    if global_weights_vec is None:
+        global_weights_vec = model2vec(global_model)
+
     # gradient_updates
     if algorithm == 'FedAvg':
         vec_updates = updates
-        gradient_updates = np.array(
-            [updates[cid] - model2vec(global_model) for cid in range(num_updates)])
+        gradient_updates = updates - np.asarray(global_weights_vec).reshape(1, -1)
 
     elif algorithm in ["FedSGD", "FedOpt"]:
         gradient_updates = updates
-        vec_updates = np.array(
-            [model2vec(global_model) + updates[cid] for cid in range(num_updates)])
+        vec_updates = np.asarray(global_weights_vec).reshape(1, -1) + updates
 
     if vector_form:
         # vector_form return 1d np array vector model parameters
@@ -72,7 +76,7 @@ def prepare_updates(algorithm, updates, global_model, vector_form=True):
     return model_updates, gradient_updates
 
 
-def wrapup_aggregated_grads(benign_grad_updates, algorithm, global_model, aggregated=False):
+def wrapup_aggregated_grads(benign_grad_updates, algorithm, global_model=None, aggregated=False, global_weights_vec=None):
     """
     wrap up the aggregated result based on the algorithm type, and selected benign gradient updates, and return the aggregated result, For FedAvg, updated model parameters, for FedSGD, FedOpt, gradients update
     Args:
@@ -82,10 +86,13 @@ def wrapup_aggregated_grads(benign_grad_updates, algorithm, global_model, aggreg
     """
     aggregated_gradient = benign_grad_updates if aggregated else np.mean(
         benign_grad_updates, axis=0)
+    aggregated_gradient = np.asarray(aggregated_gradient).reshape(-1)
     if algorithm == 'FedAvg':
-        aggregated_model = add_vec2model(
-            aggregated_gradient, global_model)
-        return model2vec(aggregated_model)
+        if global_weights_vec is None:
+            if global_model is None:
+                raise ValueError("global_model or global_weights_vec must be provided for FedAvg wrap-up")
+            global_weights_vec = model2vec(global_model)
+        return np.asarray(global_weights_vec) + aggregated_gradient
     else:
         return aggregated_gradient
 

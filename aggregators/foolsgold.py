@@ -30,9 +30,10 @@ class FoolsGold(AggregatorBase):
 
     def aggregate(self, updates, **kwargs):
         self.global_model = kwargs["last_global_model"]
+        global_weights_vec = kwargs.get("global_weights_vec")
         # get model parameters updates and gradient updates
         gradient_updates = prepare_grad_updates(
-            self.args.algorithm, updates, self.global_model)
+            self.args.algorithm, updates, self.global_model, global_weights_vec=global_weights_vec)
 
         feature_dim = len(gradient_updates[0])
         # weights for updates to re-weight for clients' updates
@@ -57,7 +58,7 @@ class FoolsGold(AggregatorBase):
 
         wv = self.pardoning(cos_dist)  # weight of updates
         agg_grad_updates = np.dot(gradient_updates.T, wv)
-        return wrapup_aggregated_grads(agg_grad_updates, self.args.algorithm, self.global_model, aggregated=True)
+        return wrapup_aggregated_grads(agg_grad_updates, self.args.algorithm, self.global_model, aggregated=True, global_weights_vec=global_weights_vec)
 
     def pardoning(self, cos_dist):
         max_cs = np.max(cos_dist, axis=1) + self.epsilon

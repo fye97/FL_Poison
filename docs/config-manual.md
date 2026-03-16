@@ -26,8 +26,10 @@
 | `milestones` | list[int/float] | `MultiStepLR` 的里程碑。若元素 < 1，则按 `epochs` 比例换算成整数轮数。 |
 | `num_clients` | int | 总客户端数。 |
 | `batch_size` | int | 客户端本地 batch size。 |
+| `eval_batch_size` | int | 评估/推理时使用的 batch size。未设置时回退到 `batch_size`。 |
 | `learning_rate` | float | 客户端本地学习率。 |
 | `local_epochs` | int | 本地训练轮数。对 `FedAvg`/`FedOpt` 生效；`FedSGD` 固定为 1。 |
+| `eval_interval` | int | 每隔多少个 global round 进行一次完整评估。默认每轮评估，最后一轮始终评估。 |
 | `model` | 见下方“模型选项” | 模型架构名。 |
 | `dataset` | 见下方“数据集选项” | 数据集名称。 |
 | `distribution` | `iid`, `class-imbalanced_iid`, `non-iid`, `pat`, `imbalanced_pat` | 数据划分方式。当前代码仅实现 `iid`/`class-imbalanced_iid`/`non-iid`。 |

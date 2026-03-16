@@ -21,9 +21,17 @@ class Worker:
         """
         device = getattr(self.args, "device", None)
         pin_memory = getattr(device, "type", None) == "cuda"
+        num_workers = int(getattr(self.args, "num_workers", 0) or 0)
+        batch_size = self.args.batch_size if train_flag else getattr(
+            self.args, "eval_batch_size", self.args.batch_size)
+        loader_kwargs = {
+            "batch_size": batch_size,
+            "shuffle": train_flag,
+            "num_workers": num_workers,
+            "pin_memory": pin_memory,
+        }
         dataloader = torch.utils.data.DataLoader(
-            dataset, batch_size=self.args.batch_size, shuffle=train_flag,
-            num_workers=self.args.num_workers, pin_memory=pin_memory)
+            dataset, **loader_kwargs)
         if train_flag:
             while True:  # add infinite loop for training epoch, because dataloader will be consumed after one dataset iteration
                 for images, targets in dataloader:
@@ -34,24 +42,23 @@ class Worker:
                 yield images, targets
 
     def criterion_fn(self, y_pred, y_true, **kwargs):
-        return torch.nn.CrossEntropyLoss()(y_pred, y_true)
+        return torch.nn.functional.cross_entropy(y_pred, y_true)
 
     def new_if_given(self, value, default):
         return default if value is None else value
 
     def train(self, model, train_iterator, optimizer, criterion_fn=None):
         criterion_fn = self.new_if_given(criterion_fn, self.criterion_fn)
-        optimizer.zero_grad()
+        optimizer.zero_grad(set_to_none=True)
         images, targets = next(train_iterator)
         images, targets = images.to(
-            self.args.device), targets.to(self.args.device)
+            self.args.device, non_blocking=True), targets.to(self.args.device, non_blocking=True)
         pred_probs = model(images)
         loss = criterion_fn(pred_probs, targets)
         loss.backward()
-        predicted = torch.argmax(pred_probs.data, 1)
+        predicted = torch.argmax(pred_probs, dim=1)
         train_acc = (predicted == targets).sum().item()
         train_loss = loss.item()
-        train_loss /= len(images)
         train_acc /= len(images)
         return train_acc, train_loss
 
@@ -64,16 +71,16 @@ class Worker:
         overall_correct, test_loss, num_samples = 0, 0, 0
         rest_correct, rest_samples = 0, 0
 
-        with torch.no_grad():
+        with torch.inference_mode():
             for images, targets in test_loader:
                 images, targets = images.to(
-                    self.args.device), targets.to(self.args.device)
+                    self.args.device, non_blocking=True), targets.to(self.args.device, non_blocking=True)
                 pred_probs = model(images)
                 loss = self.criterion_fn(pred_probs, targets)
-                predicted = torch.argmax(pred_probs.data, 1)
+                predicted = torch.argmax(pred_probs, dim=1)
                 num_samples += len(targets)
                 overall_correct += (predicted == targets).sum().item()
-                test_loss += loss.item()
+                test_loss += loss.item() * len(targets)
 
                 if imbalanced:
                     # calculate the rest class accuracy, from 5-9 for 10 classes

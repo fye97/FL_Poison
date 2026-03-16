@@ -33,13 +33,14 @@ class FLDetector(AggregatorBase):
         self.global_model, self.current_epoch = deepcopy(
             kwargs['last_global_model']), kwargs['global_epoch']
         self.global_epoch = kwargs['global_epoch']
+        global_weights_vec = kwargs.get("global_weights_vec")
 
         if self.current_epoch <= self.start_epoch:
             # save the initial model for restart when outlier detected
             self.init_model = self.global_model
 
         _, gradient_updates = prepare_updates(
-            self.args.algorithm, updates, self.global_model, vector_form=False)
+            self.args.algorithm, updates, self.global_model, vector_form=False, global_weights_vec=global_weights_vec)
         benign_idx = np.arange(len(gradient_updates))
 
         if self.current_epoch - self.start_epoch > self.window_size: # > 40 + 10
@@ -82,7 +83,7 @@ class FLDetector(AggregatorBase):
         self.last_global_grad = agg_grad_update
         self.last_grad_updates = gradient_updates
 
-        return wrapup_aggregated_grads(agg_grad_update, self.args.algorithm, self.global_model, aggregated=True)
+        return wrapup_aggregated_grads(agg_grad_update, self.args.algorithm, self.global_model, aggregated=True, global_weights_vec=global_weights_vec)
 
     def get_pred_real_dists(self, last_grad_updates, gradient_updates, hvp):
         pred_grad = last_grad_updates + hvp
