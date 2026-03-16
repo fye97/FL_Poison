@@ -19,7 +19,18 @@ class TrimmedMean(AggregatorBase):
         self.update_and_set_attr()
 
     def aggregate(self, updates, **kwargs):
-        return trimmed_mean(updates, self.beta)
+        with self.profile_substage("defense"):
+            num_excluded = int(self.beta * len(updates))
+            smallest_excluded = np.partition(
+                updates, kth=num_excluded, axis=0)[:num_excluded]
+            biggest_excluded = np.partition(
+                updates, kth=-num_excluded, axis=0)[-num_excluded:]
+
+        with self.profile_substage("aggregate"):
+            weights = np.concatenate(
+                (updates, -smallest_excluded, -biggest_excluded)).sum(0)
+            weights /= len(updates) - 2 * num_excluded
+            return weights
 
 
 def trimmed_mean(updates, filter_frac):

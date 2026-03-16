@@ -1,4 +1,7 @@
 import torch
+import time
+
+from performance_utils import CudaEventTimer
 
 
 class Worker:
@@ -8,6 +11,7 @@ class Worker:
         self.args = args
         self.worker_id = worker_id
         self.synthesizer = None  # To be customized in subclass
+        self.runtime_profiler = None
 
     def __str__(self):
         return f"worker id: {self.worker_id}"
@@ -50,12 +54,30 @@ class Worker:
     def train(self, model, train_iterator, optimizer, criterion_fn=None):
         criterion_fn = self.new_if_given(criterion_fn, self.criterion_fn)
         optimizer.zero_grad(set_to_none=True)
+        data_start = time.perf_counter()
         images, targets = next(train_iterator)
         images, targets = images.to(
             self.args.device, non_blocking=True), targets.to(self.args.device, non_blocking=True)
-        pred_probs = model(images)
-        loss = criterion_fn(pred_probs, targets)
-        loss.backward()
+        if self.runtime_profiler is not None and getattr(self.args.device, "type", None) == "cuda":
+            torch.cuda.synchronize(self.args.device)
+        data_duration = time.perf_counter() - data_start
+        if self.runtime_profiler is not None:
+            self.runtime_profiler.add_client_stage(
+                self.worker_id, "data", data_duration)
+
+        if self.runtime_profiler is not None:
+            with CudaEventTimer(self.args.device) as timer:
+                pred_probs = model(images)
+                loss = criterion_fn(pred_probs, targets)
+                loss.backward()
+            self.runtime_profiler.add_client_stage(
+                self.worker_id, "fwd_bwd", timer.wall_sec)
+            self.runtime_profiler.add_client_stage(
+                self.worker_id, "gpu_compute", timer.gpu_sec)
+        else:
+            pred_probs = model(images)
+            loss = criterion_fn(pred_probs, targets)
+            loss.backward()
         predicted = torch.argmax(pred_probs, dim=1)
         train_acc = (predicted == targets).sum().item()
         train_loss = loss.item()
@@ -63,6 +85,14 @@ class Worker:
         return train_acc, train_loss
 
     def step(self, optimizer, **kwargs):
+        if self.runtime_profiler is not None:
+            with CudaEventTimer(self.args.device) as timer:
+                optimizer.step()
+            self.runtime_profiler.add_client_stage(
+                self.worker_id, "opt_step", timer.wall_sec)
+            self.runtime_profiler.add_client_stage(
+                self.worker_id, "gpu_compute", timer.gpu_sec)
+            return
         optimizer.step()
 
     def test(self, model, test_loader, imbalanced=False):

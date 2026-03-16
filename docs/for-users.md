@@ -137,3 +137,6 @@ Attack inheritance: `DPBase` should appear before `Client`, like `class A(DPBase
 
 ## For Developers
 Check out the documentation and source code for further development.
+
+## Performance Profiling
+For the profiling workflow, baseline scripts, output files, and metric interpretation, see [performance-profiling.md](performance-profiling.md).

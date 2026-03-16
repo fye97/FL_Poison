@@ -1,4 +1,5 @@
 import torch
+import time
 from fl.algorithms import get_algorithm_handler
 from fl.models import get_model
 from fl.models.model_utils import vec2model
@@ -45,9 +46,15 @@ class Client(Worker):
         self.local_epochs = self.algorithm.init_local_epochs()
 
     def load_global_model(self, global_weights_vec):
+        start_time = time.perf_counter()
         self.global_weights_vec = global_weights_vec
         # load global parameters
         vec2model(self.global_weights_vec, self.model)
+        if self.runtime_profiler is not None:
+            if getattr(self.args.device, "type", None) == "cuda":
+                torch.cuda.synchronize(self.args.device)
+            self.runtime_profiler.add_client_stage(
+                self.worker_id, "sync", time.perf_counter() - start_time)
 
     def local_training(self, model=None, train_loader=None, optimizer=None, criterion_fn=None, local_epochs=None):
         """
@@ -85,6 +92,7 @@ class Client(Worker):
         """produce the final client update for the server.
         benign_flag is used for benign update retrival
         """
+        start_time = time.perf_counter()
         # update object is the trainable parameters or gradients according to the algorithm
         self.update = self.algorithm.get_local_update(
             global_weights_vec=self.global_weights_vec)
@@ -92,6 +100,11 @@ class Client(Worker):
             # before submit, non_omniscient crafted the update maliciously
             if self.category == "attacker" and "non_omniscient" in self.attributes:
                 self.update = self.non_omniscient()
+        if self.runtime_profiler is not None:
+            if getattr(self.args.device, "type", None) == "cuda":
+                torch.cuda.synchronize(self.args.device)
+            self.runtime_profiler.add_client_stage(
+                self.worker_id, "pack_update", time.perf_counter() - start_time)
 
         self.global_epoch += 1
 

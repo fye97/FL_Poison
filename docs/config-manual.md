@@ -39,7 +39,16 @@
 | `cache_partition` | bool 或字符串 | 是否缓存划分索引。`True`/`False` 或等于某个 `distribution` 名称时启用缓存。 |
 | `gpu_idx` | list[int] | GPU 索引列表，`args.gpu_idx[0]` 用作主卡。 |
 | `num_workers` | int | DataLoader 的 `num_workers`。 |
-| `record_time` | bool | 是否记录并输出各模块耗时。 |
+| `record_time` | bool | 是否启用 runtime profiling，输出 per-round 时间拆解、GPU 利用率/显存、最终汇总 JSON。 |
+| `gpu_sample_interval_ms` | int | `record_time=True` 时 GPU 利用率与显存采样间隔，单位毫秒。默认 `100`。 |
+| `torch_profile` | bool | 是否启用 `torch.profiler`，输出 CPU/CUDA trace。 |
+| `torch_profile_wait` | int | `torch.profiler.schedule(wait=...)`。默认 `0`。 |
+| `torch_profile_warmup` | int | `torch.profiler.schedule(warmup=...)`。默认 `1`。 |
+| `torch_profile_active` | int | `torch.profiler.schedule(active=...)`。默认 `3`。 |
+| `torch_profile_repeat` | int | `torch.profiler.schedule(repeat=...)`。默认 `1`。 |
+| `torch_profile_record_shapes` | bool | `torch.profiler` 是否记录张量 shape。默认 `True`。 |
+| `torch_profile_memory` | bool | `torch.profiler` 是否记录显存/内存信息。默认 `True`。 |
+| `torch_profile_with_stack` | bool | `torch.profiler` 是否记录 Python stack。默认 `False`。 |
 | `log_stream` | bool | 是否将日志输出到 stdout（适配 tqdm）。 |
 | `num_adv` | float 或 int | 对抗客户端数量或比例。`<1` 视为比例，`>=1` 视为绝对数量。 |
 | `attack` | 见下方“攻击选项” | 当前实验使用的攻击方法。 |
@@ -85,6 +94,19 @@ defenses:
 说明：
 - `attack`/`defense` 表示单次实验选用的方法。
 - `attacks`/`defenses` 用于 `-b/--benchmark` 模式，会两两组合执行。
+
+---
+
+**性能 Profiling 输出**
+
+- `record_time=True` 时，训练日志会输出每个 global round 的摘要，包括 `sync/data/fwd_bwd/gpu_compute/opt_step/pack_update/aggregate/defense/logging` 等阶段耗时。
+- 同时会在 `logs/perf_logs/...json` 下生成结构化 JSON，包含：
+  - 基线实验元信息：模型、batch size、client 数、local epoch、数据切分、聚合算法、seed
+  - 系统信息：GPU 型号、PyTorch 版本、CUDA 版本
+  - round 级指标：`sec/round`、`sec/client`、`gpu utilization`、`gpu compute ratio`、`显存峰值`
+  - 最终精度：`train accuracy`、`Test Acc`（以及存在时的 ASR 指标）
+- `torch_profile=True` 时，会在 `logs/torch_traces/...` 下输出 trace 文件，并在训练日志尾部打印 top ops/hints，用于检查 `cudaMemcpyAsync`、小 kernel、DataLoader、Python 开销。
+- 推荐用 `tests/perf/profile_single_run.py` 固定基线配置并执行单次 profiling run。
 
 ---
 

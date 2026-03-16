@@ -15,4 +15,5 @@ class Median(AggregatorBase):
         super().__init__(args)
 
     def aggregate(self, updates, **kwargs):
-        return np.median(updates, axis=0)
+        with self.profile_substage("aggregate"):
+            return np.median(updates, axis=0)

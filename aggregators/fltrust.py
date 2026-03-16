@@ -47,56 +47,59 @@ class FLTrust(AggregatorBase):
         self.server_client.set_algorithm(self.algorithm)
 
     def aggregate(self, updates, **kwargs):
-        self.global_model = kwargs['last_global_model']
-        # get model parameters updates and gradient updates
-        gradient_updates = prepare_grad_updates(
-            self.args.algorithm, updates, self.global_model, global_weights_vec=kwargs.get("global_weights_vec"))
-        gradient_updates = np.nan_to_num(
-            gradient_updates, nan=0.0, posinf=0.0, neginf=0.0)
-
-        # 1. server model training
         global_weights_vec = kwargs["global_weights_vec"]
-        self.server_client.load_global_model(global_weights_vec)
-        self.server_client.local_training()
-        self.server_client.fetch_updates(benign_flag=True)
+        self.global_model = kwargs['last_global_model']
+        with self.profile_substage("defense"):
+            # get model parameters updates and gradient updates
+            gradient_updates = prepare_grad_updates(
+                self.args.algorithm, updates, self.global_model, global_weights_vec=kwargs.get("global_weights_vec"))
+            gradient_updates = np.nan_to_num(
+                gradient_updates, nan=0.0, posinf=0.0, neginf=0.0)
 
-        # 2. get gradient update of server model
-        root_grad_update = prepare_grad_updates(
-            self.algorithm,
-            self.server_client.update.reshape(1, -1),
-            self.global_model,
-            global_weights_vec=global_weights_vec,
-        )
-        root_grad_update = np.nan_to_num(
-            root_grad_update, nan=0.0, posinf=0.0, neginf=0.0)
-        root_grad_norm = float(np.linalg.norm(root_grad_update))
-        if not np.isfinite(root_grad_norm) or root_grad_norm < 1e-12:
-            agg_grad_updates = np.mean(gradient_updates, axis=0)
-            return wrapup_aggregated_grads(
-                agg_grad_updates, self.args.algorithm, self.global_model, aggregated=True, global_weights_vec=global_weights_vec)
+            # 1. server model training
+            self.server_client.load_global_model(global_weights_vec)
+            self.server_client.local_training()
+            self.server_client.fetch_updates(benign_flag=True)
 
-        # 3. get the weighted cosine similarity between the client updates and the server client update as trust score
-        TS = cosine_similarity(
-            gradient_updates, root_grad_update.reshape(1, -1))
+            # 2. get gradient update of server model
+            root_grad_update = prepare_grad_updates(
+                self.algorithm,
+                self.server_client.update.reshape(1, -1),
+                self.global_model,
+                global_weights_vec=global_weights_vec,
+            )
+            root_grad_update = np.nan_to_num(
+                root_grad_update, nan=0.0, posinf=0.0, neginf=0.0)
+            root_grad_norm = float(np.linalg.norm(root_grad_update))
+            if not np.isfinite(root_grad_norm) or root_grad_norm < 1e-12:
+                agg_grad_updates = np.mean(gradient_updates, axis=0)
+                with self.profile_substage("aggregate"):
+                    return wrapup_aggregated_grads(
+                        agg_grad_updates, self.args.algorithm, self.global_model, aggregated=True, global_weights_vec=global_weights_vec)
 
-        # 4. apply relu to the similarity
-        TS = np.nan_to_num(TS, nan=0.0, posinf=0.0, neginf=0.0)
-        TS = np.maximum(TS, 0)
-        ts_sum = float(np.sum(TS))
-        if ts_sum > 1e-12:
-            TS /= ts_sum
+            # 3. get the weighted cosine similarity between the client updates and the server client update as trust score
+            TS = cosine_similarity(
+                gradient_updates, root_grad_update.reshape(1, -1))
 
-        # if the trust score is all zeros, set it to uniform, in case of server update deviation in fedsgd
-        if not np.any(TS):
-            TS = np.ones_like(TS) / len(TS)
+            # 4. apply relu to the similarity
+            TS = np.nan_to_num(TS, nan=0.0, posinf=0.0, neginf=0.0)
+            TS = np.maximum(TS, 0)
+            ts_sum = float(np.sum(TS))
+            if ts_sum > 1e-12:
+                TS /= ts_sum
 
-        # 5. normalize the magnitudes of the client updates by the last global model
-        client_norms = np.linalg.norm(gradient_updates, axis=1).reshape(-1, 1)
-        normed_updates = gradient_updates / (client_norms + 1e-9) * root_grad_norm
-        normed_updates = np.nan_to_num(
-            normed_updates, nan=0.0, posinf=0.0, neginf=0.0)
+            # if the trust score is all zeros, set it to uniform, in case of server update deviation in fedsgd
+            if not np.any(TS):
+                TS = np.ones_like(TS) / len(TS)
 
-        agg_grad_updates = np.average(
-            normed_updates, axis=0, weights=np.squeeze(TS))
+            # 5. normalize the magnitudes of the client updates by the last global model
+            client_norms = np.linalg.norm(gradient_updates, axis=1).reshape(-1, 1)
+            normed_updates = gradient_updates / (client_norms + 1e-9) * root_grad_norm
+            normed_updates = np.nan_to_num(
+                normed_updates, nan=0.0, posinf=0.0, neginf=0.0)
 
-        return wrapup_aggregated_grads(agg_grad_updates, self.args.algorithm, self.global_model, aggregated=True, global_weights_vec=global_weights_vec)
+        with self.profile_substage("aggregate"):
+            agg_grad_updates = np.average(
+                normed_updates, axis=0, weights=np.squeeze(TS))
+
+            return wrapup_aggregated_grads(agg_grad_updates, self.args.algorithm, self.global_model, aggregated=True, global_weights_vec=global_weights_vec)

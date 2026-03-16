@@ -1,4 +1,5 @@
 import numpy as np
+import time
 from aggregators import get_aggregator
 from fl.algorithms import get_algorithm_handler
 from fl.models import get_model
@@ -42,11 +43,15 @@ class Server(Worker):
             algorithm)(self.args, self.global_model)
 
     def collect_updates(self, global_epoch):
+        start_time = time.perf_counter()
         self.global_epoch = global_epoch
         # get the client update from clients
         updates = [client.update for client in self.clients]
         if not updates:
             self.client_updates = np.empty((0, 0), dtype=np.float32)
+            if self.runtime_profiler is not None:
+                self.runtime_profiler.add_server_stage(
+                    "collect_updates", time.perf_counter() - start_time)
             return
         first = np.asarray(updates[0]).reshape(-1)
         num_clients = len(updates)
@@ -62,11 +67,20 @@ class Server(Worker):
                 arr = arr.astype(first.dtype, copy=False)
             stacked[idx] = arr
         self.client_updates = stacked
+        if self.runtime_profiler is not None:
+            self.runtime_profiler.add_server_stage(
+                "collect_updates", time.perf_counter() - start_time)
 
     def aggregation(self):
         # aggregate gradient (for fedsgd), model parameters (for fedavg), and return the aggregated model parameters
+        start_time = time.perf_counter()
+        if self.runtime_profiler is not None:
+            self.runtime_profiler.begin_aggregation_breakdown()
         self.aggregated_update = self.aggregator.aggregate(
             self.client_updates, last_global_model=self.global_model, global_weights_vec=self.global_weights_vec, global_epoch=self.global_epoch)
+        if self.runtime_profiler is not None:
+            self.runtime_profiler.finish_aggregation(
+                time.perf_counter() - start_time)
 
     def update_global(self):
         # update the global model with the aggregated update w.r.t the algorithm

@@ -9,4 +9,5 @@ class Mean(AggregatorBase):
         super().__init__(args)
 
     def aggregate(self, updates, **kwargs):
-        return np.mean(updates, axis=0)
+        with self.profile_substage("aggregate"):
+            return np.mean(updates, axis=0)

@@ -1,3 +1,5 @@
+import time
+from contextlib import contextmanager
 
 
 class AggregatorBase():
@@ -6,6 +8,7 @@ class AggregatorBase():
 
     def __init__(self, args, **kwargs):
         self.args = args
+        self.runtime_profiler = None
 
     def update_and_set_attr(self):
         """
@@ -25,6 +28,21 @@ class AggregatorBase():
         updates: 2d numpy array with the [rows, columns] as [clients, updates].
         """
         raise NotImplementedError
+
+    def bind_runtime_profiler(self, runtime_profiler):
+        self.runtime_profiler = runtime_profiler
+        if hasattr(self, "server_client") and getattr(self, "server_client", None) is not None:
+            self.server_client.runtime_profiler = runtime_profiler
+
+    @contextmanager
+    def profile_substage(self, stage):
+        start_time = time.perf_counter()
+        try:
+            yield
+        finally:
+            if self.runtime_profiler is not None:
+                self.runtime_profiler.add_aggregation_substage(
+                    stage, time.perf_counter() - start_time)
 
 
 """ Template for creating a new aggregator:

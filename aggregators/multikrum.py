@@ -22,8 +22,22 @@ class MultiKrum(AggregatorBase):
         self.update_and_set_attr()
 
     def aggregate(self, updates, **kwargs):
-        return multi_krum(
-            updates, self.args.num_adv, avg_percentage=self.avg_percentage, enable_check=self.enable_check)
+        num_clients = len(updates)
+        m_avg = int(self.avg_percentage * num_clients)
+        if self.enable_check:
+            if num_clients <= 2 * self.args.num_adv + 2:
+                raise ValueError(
+                    f"num_byzantine should be meet 2f+2 < n, got 2*{self.args.num_adv}+2 >= {num_clients}."
+                )
+        with self.profile_substage("defense"):
+            distances = L2_distances(updates)
+            scores = [(i, krum_compute_scores(distances, i, num_clients, self.args.num_adv))
+                      for i in range(num_clients)]
+            sorted_scores = sorted(scores, key=lambda x: x[1])
+            selected_updates = updates[[sorted_scores[idx][0]
+                                        for idx in range(m_avg)]]
+        with self.profile_substage("aggregate"):
+            return np.mean(selected_updates, axis=0)
 
 
 def multi_krum(updates, num_byzantine, avg_percentage, enable_check=False):

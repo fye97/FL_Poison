@@ -11,6 +11,7 @@ from global_utils import avg_value, print_filtered_args, setup_logger, setup_see
 from datapreprocessor.data_utils import load_data, split_dataset
 from fl.server import Server
 from plot_utils import plot_accuracy
+from performance_utils import RuntimeProfiler, create_torch_profiler, summarize_torch_profiler
 
 
 def _output_with_experiment_id(base_output: str, seed: int, experiment_id: int) -> str:
@@ -48,6 +49,10 @@ def fl_run(args):
         __name__, f'{args.output}', level=logging.INFO,
         stream=args.log_stream, use_tqdm=args.log_stream)
     print_filtered_args(args, args.logger)
+    runtime_profiler = RuntimeProfiler(
+        args, args.logger, args.output) if args.record_time else None
+    if runtime_profiler is not None:
+        runtime_profiler.log_system_info()
     start_time = time.time()
     args.logger.info(
         f"Started on {time.asctime(time.localtime(start_time))}")
@@ -64,60 +69,88 @@ def fl_run(args):
     clients = coordinator.init_clients(
         args, client_indices, train_dataset, test_dataset)
     the_server = Server(args, clients, test_dataset, train_dataset)
+    if runtime_profiler is not None:
+        runtime_profiler.attach(the_server, clients)
 
     # 3. initialize the federated learning algorithm for clients and server
     coordinator.set_fl_algorithm(args, the_server, clients)
     args.logger.info("Clients and server are initialized")
     args.logger.info("Starting Training...")
-    for global_epoch in tqdm(range(args.epochs), desc="Global Epochs", dynamic_ncols=True):
-        epoch_msg = f"Epoch {global_epoch:<3}\t"
-        # print(f"Global epoch {global_epoch} begin")
-        # server dispatches numpy version global weights 1d vector to clients
-        global_weights_vec = the_server.global_weights_vec
+    torch_profiler = None
+    with create_torch_profiler(args, args.output) as torch_profiler:
+        for global_epoch in tqdm(range(args.epochs), desc="Global Epochs", dynamic_ncols=True):
+            round_start = time.perf_counter()
+            if runtime_profiler is not None:
+                runtime_profiler.start_round(global_epoch)
 
-        # clients' local training
-        avg_train_acc, avg_train_loss = [], []
-        for client in clients:
-            client.load_global_model(global_weights_vec)
-            train_acc, train_loss = client.local_training()
-            client.fetch_updates()
-            avg_train_acc.append(train_acc)
-            avg_train_loss.append(train_loss)
+            epoch_msg = f"Epoch {global_epoch:<3}\t"
+            # print(f"Global epoch {global_epoch} begin")
+            # server dispatches numpy version global weights 1d vector to clients
+            global_weights_vec = the_server.global_weights_vec
 
-        avg_train_loss = avg_value(avg_train_loss)
-        avg_train_acc = avg_value(avg_train_acc)
-        epoch_msg += f"\tTrain Acc: {avg_train_acc:.4f}\tTrain loss: {avg_train_loss:.4f}\t"
+            # clients' local training
+            avg_train_acc, avg_train_loss = [], []
+            for client in clients:
+                client.load_global_model(global_weights_vec)
+                train_acc, train_loss = client.local_training()
+                client.fetch_updates()
+                avg_train_acc.append(train_acc)
+                avg_train_loss.append(train_loss)
 
-        # perform post-training attacks, for omniscient model poisoning attack, pass all clients
-        omniscient_attack(clients)
+            avg_train_loss = avg_value(avg_train_loss)
+            avg_train_acc = avg_value(avg_train_acc)
+            epoch_msg += f"\tTrain Acc: {avg_train_acc:.4f}\tTrain loss: {avg_train_loss:.4f}\t"
 
-        # server collects weights from clients
-        the_server.collect_updates(global_epoch)
-        the_server.aggregation()
-        the_server.update_global()
+            # perform post-training attacks, for omniscient model poisoning attack, pass all clients
+            omniscient_attack(clients)
 
-        # evalute the attack success rate (ASR) when a backdoor attack is launched
-        should_eval = (
-            global_epoch == 0
-            or global_epoch == args.epochs - 1
-            or (global_epoch + 1) % max(1, int(args.eval_interval)) == 0
-        )
-        test_stats = {}
-        if should_eval:
-            test_stats = coordinator.evaluate(
-                the_server, test_dataset, args, global_epoch)
+            # server collects weights from clients
+            the_server.collect_updates(global_epoch)
+            the_server.aggregation()
+            the_server.update_global()
 
-        # print the training and testing results of the current global_epoch
-        if test_stats:
-            epoch_msg += "\t".join(
-                [f"{key}: {value:.4f}" for key, value in test_stats.items()])
-        args.logger.info(epoch_msg)
-        # clear memory (low-frequency to reduce overhead)
-        if (global_epoch + 1) % 20 == 0:
-            gc.collect()
+            # evalute the attack success rate (ASR) when a backdoor attack is launched
+            should_eval = (
+                global_epoch == 0
+                or global_epoch == args.epochs - 1
+                or (global_epoch + 1) % max(1, int(args.eval_interval)) == 0
+            )
+            test_stats = {}
+            eval_start = time.perf_counter()
+            if should_eval:
+                test_stats = coordinator.evaluate(
+                    the_server, test_dataset, args, global_epoch)
+            if runtime_profiler is not None and should_eval:
+                runtime_profiler.add_server_stage(
+                    "evaluation", time.perf_counter() - eval_start)
+
+            # print the training and testing results of the current global_epoch
+            log_start = time.perf_counter()
+            if test_stats:
+                epoch_msg += "\t".join(
+                    [f"{key}: {value:.4f}" for key, value in test_stats.items()])
+            args.logger.info(epoch_msg)
+            if runtime_profiler is not None:
+                runtime_profiler.add_server_stage(
+                    "logging", time.perf_counter() - log_start)
+                runtime_profiler.finish_round(
+                    total_sec=time.perf_counter() - round_start,
+                    train_acc=avg_train_acc,
+                    train_loss=avg_train_loss,
+                    test_stats=test_stats,
+                )
+            if torch_profiler is not None:
+                torch_profiler.step()
+
+            # clear memory (low-frequency to reduce overhead)
+            if (global_epoch + 1) % 20 == 0:
+                gc.collect()
 
     if args.record_time:
         report_time(clients, the_server)
+        runtime_profiler.finalize()
+    if torch_profiler is not None:
+        summarize_torch_profiler(torch_profiler, args.logger, args.device)
 
     plot_accuracy(args.output)
 

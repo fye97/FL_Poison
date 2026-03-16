@@ -117,6 +117,26 @@ def read_args():
                         help='output file for results')
     parser.add_argument('-log_stream', '--log_stream', action='store_true', default=None,
                         help='Enable logging to stdout (tqdm-safe).')
+    parser.add_argument('-record_time', '--record_time', action='store_true', default=None,
+                        help='Enable runtime performance timing and per-round summaries.')
+    parser.add_argument('-torch_profile', '--torch_profile', action='store_true', default=None,
+                        help='Enable torch.profiler tracing.')
+    parser.add_argument('-gpu_sample_interval_ms', '--gpu_sample_interval_ms', type=int,
+                        help='GPU sampling interval in milliseconds when runtime timing is enabled.')
+    parser.add_argument('-torch_profile_wait', '--torch_profile_wait', type=int,
+                        help='torch.profiler schedule wait steps.')
+    parser.add_argument('-torch_profile_warmup', '--torch_profile_warmup', type=int,
+                        help='torch.profiler schedule warmup steps.')
+    parser.add_argument('-torch_profile_active', '--torch_profile_active', type=int,
+                        help='torch.profiler schedule active steps.')
+    parser.add_argument('-torch_profile_repeat', '--torch_profile_repeat', type=int,
+                        help='torch.profiler schedule repeat count.')
+    parser.add_argument('-torch_profile_record_shapes', '--torch_profile_record_shapes', action='store_true', default=None,
+                        help='Record operator shapes in torch.profiler.')
+    parser.add_argument('-torch_profile_memory', '--torch_profile_memory', action='store_true', default=None,
+                        help='Record memory usage in torch.profiler.')
+    parser.add_argument('-torch_profile_with_stack', '--torch_profile_with_stack', action='store_true', default=None,
+                        help='Capture Python stacks in torch.profiler.')
     # poison settings
     parser.add_argument('-prate', '-poisoning_ratio', '--poisoning_ratio',
                         help='poisoning portion (float, range from 0 to 1, default: 0.1)')
@@ -246,6 +266,26 @@ def single_preprocess(args):
         args.eval_batch_size = args.batch_size
     if not hasattr(args, 'eval_interval') or args.eval_interval is None:
         args.eval_interval = 1
+    if not hasattr(args, 'record_time') or args.record_time is None:
+        args.record_time = False
+    if not hasattr(args, 'torch_profile') or args.torch_profile is None:
+        args.torch_profile = False
+    if not hasattr(args, 'gpu_sample_interval_ms') or args.gpu_sample_interval_ms is None:
+        args.gpu_sample_interval_ms = 100
+    if not hasattr(args, 'torch_profile_wait') or args.torch_profile_wait is None:
+        args.torch_profile_wait = 0
+    if not hasattr(args, 'torch_profile_warmup') or args.torch_profile_warmup is None:
+        args.torch_profile_warmup = 1
+    if not hasattr(args, 'torch_profile_active') or args.torch_profile_active is None:
+        args.torch_profile_active = 3
+    if not hasattr(args, 'torch_profile_repeat') or args.torch_profile_repeat is None:
+        args.torch_profile_repeat = 1
+    if not hasattr(args, 'torch_profile_record_shapes') or args.torch_profile_record_shapes is None:
+        args.torch_profile_record_shapes = True
+    if not hasattr(args, 'torch_profile_memory') or args.torch_profile_memory is None:
+        args.torch_profile_memory = True
+    if not hasattr(args, 'torch_profile_with_stack') or args.torch_profile_with_stack is None:
+        args.torch_profile_with_stack = False
 
     # ensure attack_params and defense_params attributes exist. when there is no params, set it to None.
     ensure_attr(args, 'attack_params')
