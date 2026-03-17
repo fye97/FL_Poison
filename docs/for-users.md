@@ -52,7 +52,7 @@ sudo brew install unrar
 CPU-intensive, GPU memory-intensive, and FP32 operation-heavy hardware configurations are recommended for the benchmark experiment. A machine with 16+ CPU cores (for example, Intel Xeon Gold 6226R, Platinum 8352V, 8377C, AMD EPYC 7T83), 60GB+ memory, and GPUs with 24GB+ memory each with good FP32 performance (for example, NVIDIA 3090, A40, 4090, L20, L40s, L40) is ideal. These configurations ensure the experiment runs efficiently on a single machine.
 
 ## Simple Usage
-The `./configs` folder is now flat. Shared attack, defense, and dataset metadata live in `configs/attacks.yaml`, `configs/defenses.yaml`, and `configs/datasets.yaml`. Runnable presets also live directly in `configs/`, with names like `FedSGD_MNIST_Lenet.yaml`.
+The `./configs` folder keeps runnable presets at the top level. Shared attack, defense, and dataset metadata live in `configs/presets/attacks.yaml`, `configs/presets/defenses.yaml`, and `configs/presets/datasets.yaml`.
 
 For example, to run FedSGD on MNIST with LeNet:
 
@@ -120,12 +120,12 @@ There are two uses for command line options. You can use them to run the program
 YAML is used for parameter storage. The parameters should be stored in the `configs` folder as `.yaml` files.
 
 We provide two types of configuration:
-1. Shared configuration: `configs/attacks.yaml`, `configs/defenses.yaml`, `configs/datasets.yaml`
+1. Shared configuration: `configs/presets/attacks.yaml`, `configs/presets/defenses.yaml`, `configs/presets/datasets.yaml`
 2. Experiment configuration: `configs/{FL algorithm}_{dataset}_{model}.yaml`
 
-`./configs/datasets.yaml` stores dataset metadata such as channels, class counts, normalization statistics, and feature dimensions.
+`./configs/presets/datasets.yaml` stores dataset metadata such as channels, class counts, normalization statistics, and feature dimensions.
 
-`./configs/FedSGD_MNIST_Lenet.yaml` is the canonical preset for the FedSGD algorithm on the MNIST dataset with the default LeNet model. You can modify parameters in this file and customize the training defaults. Shared attack and defense registries are loaded from `configs/attacks.yaml` and `configs/defenses.yaml`.
+`./configs/FedSGD_MNIST_Lenet.yaml` is the canonical preset for the FedSGD algorithm on the MNIST dataset with the default LeNet model. You can modify parameters in this file and customize the training defaults. Shared attack and defense registries are loaded from `configs/presets/attacks.yaml` and `configs/presets/defenses.yaml`.
 
 ## HAR (UCI Human Activity Recognition)
 This repo includes a loader for the UCI HAR dataset (`dataset: HAR`) and a simple vector MLP (`model: mlp`).

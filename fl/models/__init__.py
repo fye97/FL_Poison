@@ -29,7 +29,7 @@ def get_model(args):
     elif args.model in model_categories["vector"]:
         input_dim = getattr(args, "num_features", None)
         if input_dim is None:
-            raise ValueError("Missing `num_features` for vector model. Add it to configs/datasets.yaml for this dataset.")
+            raise ValueError("Missing `num_features` for vector model. Add it to configs/presets/datasets.yaml for this dataset.")
         model = model_registry[args.model](input_dim=input_dim, num_classes=args.num_classes)
     elif args.model in model_categories["adaptive"]:
         model = model_registry[args.model](

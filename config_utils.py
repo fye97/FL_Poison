@@ -5,9 +5,6 @@ from typing import Any, Iterable
 
 import yaml
 
-SHARED_CONFIG_FILENAMES = {"attacks.yaml", "defenses.yaml", "datasets.yaml"}
-
-
 def repo_root() -> Path:
     return Path(__file__).resolve().parent
 
@@ -16,8 +13,12 @@ def configs_dir(root: Path | None = None) -> Path:
     return (root or repo_root()) / "configs"
 
 
+def shared_configs_dir(root: Path | None = None) -> Path:
+    return configs_dir(root) / "presets"
+
+
 def _shared_config_path(filename: str, root: Path | None = None) -> Path:
-    return configs_dir(root) / filename
+    return shared_configs_dir(root) / filename
 
 
 def dataset_catalog_path(root: Path | None = None) -> Path:
@@ -60,11 +61,7 @@ def preset_relpath(
 
 
 def list_preset_files(root: Path | None = None) -> list[Path]:
-    return sorted(
-        p.resolve()
-        for p in configs_dir(root).glob("*.yaml")
-        if p.name not in SHARED_CONFIG_FILENAMES
-    )
+    return sorted(p.resolve() for p in configs_dir(root).glob("*.yaml"))
 
 
 def resolve_config_path(path_like: str | Path, *, root: Path | None = None) -> Path:
@@ -147,7 +144,7 @@ def load_experiment_config(path_like: str | Path, *, root: Path | None = None) -
     if obsolete_fields:
         raise ValueError(
             f"obsolete config fields {obsolete_fields} found in {path}; "
-            "use the shared configs/attacks.yaml and configs/defenses.yaml files instead"
+            "use the shared configs/presets/attacks.yaml and configs/presets/defenses.yaml files instead"
         )
 
     if "attacks" not in raw:
