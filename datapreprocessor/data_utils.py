@@ -5,6 +5,7 @@ import torch
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import datasets, transforms
+from torchvision.transforms import functional as transform_f
 from datapreprocessor.cinic10 import CINIC10
 from datapreprocessor.chmnist import CHMNIST
 from plot_utils import plot_label_distribution
@@ -258,17 +259,78 @@ class Partition(Dataset):
                 self.mode = 'RGB'
         self.transform = transform
         self.poison = False
+        self.cached_data = self._build_tensor_cache()
 
     def __len__(self):
         if self.data is not None:
             return len(self.data)
         return len(self.indices)
 
+    def _resolve_tensor_cache_ops(self):
+        if self.transform is None or not hasattr(self.transform, "transforms"):
+            return None
+        ops = list(self.transform.transforms)
+        resize_op = None
+        if len(ops) == 2:
+            to_tensor_op, normalize_op = ops
+        elif len(ops) == 3 and isinstance(ops[0], transforms.Resize):
+            resize_op, to_tensor_op, normalize_op = ops
+        else:
+            return None
+        if not isinstance(to_tensor_op, transforms.ToTensor):
+            return None
+        if not isinstance(normalize_op, transforms.Normalize):
+            return None
+        return resize_op, normalize_op
+
+    def _build_tensor_cache(self):
+        cache_ops = self._resolve_tensor_cache_ops()
+        if cache_ops is None or self.data is None or isinstance(self.data, list):
+            return None
+
+        raw = self.data
+        if isinstance(raw, np.ndarray):
+            raw = torch.from_numpy(raw)
+        elif not torch.is_tensor(raw):
+            return None
+
+        if raw.ndim == 3:
+            raw = raw.unsqueeze(1)
+        elif raw.ndim == 4 and raw.shape[-1] in (1, 3):
+            raw = raw.permute(0, 3, 1, 2)
+        elif raw.ndim != 4:
+            return None
+
+        resize_op, normalize_op = cache_ops
+        cached = transform_f.convert_image_dtype(raw, torch.float32)
+        if resize_op is not None:
+            cached = transform_f.resize(
+                cached,
+                resize_op.size,
+                interpolation=resize_op.interpolation,
+                antialias=resize_op.antialias,
+            )
+        mean = torch.as_tensor(normalize_op.mean, dtype=cached.dtype).view(1, -1, 1, 1)
+        std = torch.as_tensor(normalize_op.std, dtype=cached.dtype).view(1, -1, 1, 1)
+        return ((cached - mean) / std).contiguous()
+
     def __getitem__(self, idx):
         if self.data is None:
             # Fallback for datasets without materialized data storage.
             real_idx = self.indices[idx]
             image, target = self.dataset[real_idx]
+            return image, target
+
+        if self.cached_data is not None:
+            image = self.cached_data[idx]
+            target = self.targets[idx] if self.targets is not None else None
+            if self.poison:
+                image = image.clone()
+                target_tensor = target if torch.is_tensor(target) else torch.tensor(target)
+                image, target = self.synthesizer.backdoor_batch(
+                    image, target_tensor.reshape(-1, 1))
+            if torch.is_tensor(target):
+                target = target.squeeze()
             return image, target
 
         image, target = self.data[idx], self.targets[idx] if self.targets is not None else None

@@ -26,7 +26,7 @@
 | `milestones` | list[int/float] | `MultiStepLR` 的里程碑。若元素 < 1，则按 `epochs` 比例换算成整数轮数。 |
 | `num_clients` | int | 总客户端数。 |
 | `batch_size` | int | 客户端本地 batch size。 |
-| `eval_batch_size` | int | 评估/推理时使用的 batch size。未设置时回退到 `batch_size`。 |
+| `eval_batch_size` | int | 评估/推理时使用的 batch size。代码层未设置时回退到 `batch_size`；当前仓库的 `MNIST + lenet` 基线配置显式设为 `1024`。 |
 | `learning_rate` | float | 客户端本地学习率。 |
 | `local_epochs` | int | 本地训练轮数。对 `FedAvg`/`FedOpt` 生效；`FedSGD` 固定为 1。 |
 | `eval_interval` | int | 每隔多少个 global round 进行一次完整评估。默认每 `10` 轮评估一次，最后一轮始终评估。 |

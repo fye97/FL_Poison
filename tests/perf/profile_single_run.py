@@ -55,6 +55,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=None, help="Optional global-round override.")
     parser.add_argument("--num-clients", type=int, default=None, help="Optional client-count override.")
     parser.add_argument("--batch-size", type=int, default=None, help="Optional train batch-size override.")
+    parser.add_argument("--eval-batch-size", type=int, default=None, help="Optional eval batch-size override.")
     parser.add_argument("--local-epochs", type=int, default=None, help="Optional local-epoch override.")
     parser.add_argument("--seed", type=int, default=None, help="Optional seed override.")
     parser.add_argument(
@@ -126,6 +127,7 @@ def build_profile_config(args: argparse.Namespace, source_config: Path, output_r
         "epochs": args.epochs,
         "num_clients": args.num_clients,
         "batch_size": args.batch_size,
+        "eval_batch_size": args.eval_batch_size,
         "local_epochs": args.local_epochs,
         "seed": args.seed,
     }
@@ -169,6 +171,7 @@ def print_summary(summary: dict[str, Any], perf_json: Path) -> None:
     print("Baseline summary")
     print(
         f"config: model={metadata.get('model')} batch_size={metadata.get('batch_size')} "
+        f"eval_batch_size={metadata.get('eval_batch_size')} "
         f"clients={metadata.get('num_clients')} local_epochs={metadata.get('local_epochs')} "
         f"distribution={metadata.get('distribution')} defense={metadata.get('defense')} "
         f"seed={metadata.get('seed')}"

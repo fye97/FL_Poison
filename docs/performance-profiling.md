@@ -50,6 +50,7 @@ python tests/perf/profile_single_run.py \
   --epochs 20 \
   --num-clients 10 \
   --batch-size 64 \
+  --eval-batch-size 1024 \
   --local-epochs 1 \
   --seed 7
 ```
@@ -63,6 +64,7 @@ python tests/perf/profile_single_run.py \
   --epochs 20 \
   --num-clients 10 \
   --batch-size 64 \
+  --eval-batch-size 1024 \
   --local-epochs 1 \
   --seed 7 \
   --extra-cli-args "--eval_interval 20"
@@ -77,6 +79,7 @@ python tests/perf/profile_single_run.py \
   --epochs 20 \
   --num-clients 10 \
   --batch-size 64 \
+  --eval-batch-size 1024 \
   --local-epochs 1 \
   --seed 7 \
   --extra-cli-args "--eval_interval 20" \
@@ -87,6 +90,8 @@ python tests/perf/profile_single_run.py \
 - `tests/perf/profile_single_run.py` 会生成一份临时配置文件，并强制开启 `record_time=True`
 - 默认会固定 `num_experiments=1`、`experiment_id=0`
 - 输出文件名会带 `_exp0`
+- 对当前 `FedSGD + lenet + MNIST + 10 clients` 基线，建议显式设置 `--eval-batch-size 1024`
+- 2026-03-16 的 sweep 中位数结果：`64 -> sec/round 0.2828, evaluation 0.1591`；`256 -> 0.2074, 0.0823`；`512 -> 0.1900, 0.0518`；`1024 -> 0.1858, 0.0485`
 
 ---
 
@@ -120,7 +125,7 @@ python tests/perf/profile_single_run.py \
 
 ```text
 Baseline summary
-config: model=lenet batch_size=64 clients=10 local_epochs=1 distribution=iid defense=Mean seed=7
+config: model=lenet batch_size=64 eval_batch_size=1024 clients=10 local_epochs=1 distribution=iid defense=Mean seed=7
 sec/round=0.3324 rounds/sec=3.0084 sec/client=0.0227
 gpu_util=87.15 gpu_compute_ratio=0.2372 gpu_mem_peak_mb=31.05
 train_acc=0.23125 val_acc=0.2562

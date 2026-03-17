@@ -9,7 +9,21 @@ if str(PERF_DIR) not in sys.path:
     sys.path.insert(0, str(PERF_DIR))
 
 from performance_utils import perf_summary_path
-from profile_single_run import resolve_perf_json
+from profile_single_run import build_profile_config, resolve_perf_json
+
+
+class _Args:
+    model = None
+    algorithm = None
+    distribution = None
+    epochs = None
+    num_clients = None
+    batch_size = None
+    eval_batch_size = 1024
+    local_epochs = None
+    seed = None
+    torch_profile = False
+    gpu_sample_interval_ms = 100
 
 
 def test_resolve_perf_json_finds_expected_file(tmp_path):
@@ -28,3 +42,13 @@ def test_resolve_perf_json_falls_back_to_single_candidate(tmp_path):
     fallback.write_text("{}", encoding="utf-8")
 
     assert resolve_perf_json(output_path) == fallback
+
+
+def test_build_profile_config_overrides_eval_batch_size(tmp_path):
+    source_config = tmp_path / "config.yaml"
+    source_config.write_text("batch_size: 64\neval_batch_size: 64\n", encoding="utf-8")
+
+    profile_config, _ = build_profile_config(_Args(), source_config, tmp_path / "out")
+
+    payload = profile_config.read_text(encoding="utf-8")
+    assert "eval_batch_size: 1024" in payload
