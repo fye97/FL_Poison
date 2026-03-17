@@ -1,8 +1,14 @@
 import { defineConfig } from 'vitepress'
 
 const githubLink = 'https://github.com/fye97/FL_Poison'
+const repoName = process.env.GITHUB_REPOSITORY?.split('/')[1]
+const base =
+  process.env.GITHUB_ACTIONS && repoName && !repoName.endsWith('.github.io')
+    ? `/${repoName}/`
+    : '/'
 
 export default defineConfig({
+  base,
   lang: 'zh-CN',
   title: 'FLPoison',
   description: 'FLPoison 文档站点：快速上手、配置手册与性能剖析。',
