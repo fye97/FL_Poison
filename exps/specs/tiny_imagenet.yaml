@@ -6,6 +6,18 @@ scenarios:
     dataset: TinyImageNet
 
 matrix:
+  distributions:
+    - type: iid
+    - type: non-iid
+      dirichlet_alpha: 0.1
+    - type: non-iid
+      dirichlet_alpha: 0.5
+    - type: non-iid
+      dirichlet_alpha: 1
+  num_advs:
+    - 0.2
+    - 0.3
+    - 0.4
   attacks:
     - NoAttack
     - MinMax

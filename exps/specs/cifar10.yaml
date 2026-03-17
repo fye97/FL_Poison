@@ -6,6 +6,28 @@ scenarios:
     dataset: CIFAR10
 
 matrix:
+  distributions:
+    - type: iid
+    - type: non-iid
+      dirichlet_alpha: 0.1
+    - type: non-iid
+      dirichlet_alpha: 0.5
+    - type: non-iid
+      dirichlet_alpha: 1
+  num_advs:
+    - 0.2
+    - 0.3
+    - 0.4
+  models:
+    - vgg19
+  epochs:
+    - 200
+  num_clients:
+    - 20
+  learning_rates:
+    - 0.05
+  seeds:
+    - 42
   attacks:
     - NoAttack
     - MinMax
