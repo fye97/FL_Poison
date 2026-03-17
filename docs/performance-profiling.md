@@ -1,4 +1,10 @@
-# Performance Profiling
+---
+title: 性能剖析
+description: 单次 profiling 工作流、输出文件位置与指标解释。
+outline: deep
+---
+
+# 性能剖析 / Performance Profiling
 
 本文档记录本项目当前已经落地的性能测试与 profiling 工作，包括：
 - 基线实验如何固定

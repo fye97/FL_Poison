@@ -1,4 +1,10 @@
-**Config Manual**
+---
+title: 配置手册
+description: "`configs/` 参数说明、默认值来源与攻击防御配置汇总。"
+outline: deep
+---
+
+# 配置手册
 
 本文档说明 `configs/` 目录下配置文件（`{Algorithm}_{Dataset}_config.yaml` 与 `dataset_config.yaml`）中所有可用参数、选项与默认值来源。
 
@@ -12,7 +18,7 @@
 
 ---
 
-**主配置文件（{Algorithm}_{Dataset}_config.yaml）字段**
+## 主配置文件（{Algorithm}_{Dataset}_config.yaml）字段
 
 | 参数 | 类型/可选值 | 说明 |
 | --- | --- | --- |
@@ -63,7 +69,7 @@
 
 ---
 
-**攻击/防御列表配置格式**
+## 攻击/防御列表配置格式
 
 示例（与当前仓库一致）：
 
@@ -97,7 +103,7 @@ defenses:
 
 ---
 
-**性能 Profiling 输出**
+## 性能 Profiling 输出
 
 - `record_time=True` 时，训练日志会输出每个 global round 的摘要，包括 `sync/data/fwd_bwd/gpu_compute/opt_step/pack_update/aggregate/defense/logging` 等阶段耗时。
 - 同时会在 `logs/perf_logs/...json` 下生成结构化 JSON，包含：
@@ -113,7 +119,7 @@ defenses:
 
 ---
 
-**可选值汇总**
+## 可选值汇总
 
 - `algorithm`: `FedSGD`, `FedAvg`, `FedOpt`
 - `optimizer`: `SGD`, `Adam`
@@ -124,7 +130,7 @@ defenses:
 
 ---
 
-**攻击选项**
+## 攻击选项
 
 `NoAttack`, `SignFlipping`, `Gaussian`, `IPM`, `ALIE`, `MinMax`, `MinSum`, `FangAttack`, `Mimic`, `ModelReplacement`, `BadNets`, `BadNets_image`, `LabelFlipping`, `DBA`, `EdgeCase`, `Neurotoxin`, `AlterMin`, `ThreeDFed`
 
@@ -133,13 +139,15 @@ defenses:
 
 ---
 
-**防御选项**
+## 防御选项
 
 `Mean`, `Median`, `Krum`, `MultiKrum`, `TrimmedMean`, `Bulyan`, `RFA`, `FLTrust`, `CenteredClipping`, `DnC`, `Bucketing`, `SignGuard`, `LASA`, `Auror`, `FoolsGold`, `NormClipping`, `CRFL`, `DeepSight`, `FLAME`, `SimpleClustering`, `FLDetector`
 
 ---
 
-**attack_params 通用字段（数据投毒类）**
+## attack_params 通用字段
+
+### 数据投毒类
 
 `attack_model`: `all2one`, `all2all`, `targeted`, `random`（部分攻击只支持子集）。  
 `poisoning_ratio`: 0~1，投毒样本比例。  
@@ -152,7 +160,7 @@ defenses:
 `poison_frequency`: `fixed-frequency` 时的投毒频率（可为比例或绝对轮数，按 `frac_or_int_to_int` 处理）。  
 `attack_start_epoch`: 从指定全局轮数开始投毒（BadNets/DBA 等）。  
 
-**attack_params 通用字段（模型投毒类）**
+### 模型投毒类
 
 `scaling_factor`: 更新缩放系数（IPM/ModelReplacement/DBA/EdgeCase 等）。  
 `gamma_init`: MinMax/MinSum 初始搜索参数。  
@@ -160,7 +168,7 @@ defenses:
 
 ---
 
-**各攻击默认参数**
+## 各攻击默认参数
 
 `ALIE`  
 `z_max: None`, `attack_start_epoch: None`
@@ -214,7 +222,7 @@ defenses:
 
 ---
 
-**各防御默认参数**
+## 各防御默认参数
 
 `Auror`  
 `indicative_threshold: 0.002`, `indicative_find_epoch: 10`

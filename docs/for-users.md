@@ -1,4 +1,10 @@
-# For Users
+---
+title: 快速上手
+description: 安装、运行实验、覆盖配置参数与 benchmark 模式说明。
+outline: [2, 3]
+---
+
+# 快速上手 / For Users
 For people who just want to run and use it.
 
 ## Getting Started
@@ -105,6 +111,8 @@ The above command trains LeNet-5 on MNIST with non-IID data partition on the Fed
 ## Parameters Setting
 Two parameter passing methods are supported: command line options and configuration files.
 
+For the full parameter matrix, defaults, and attack or defense options, see [config-manual.md](/config-manual).
+
 ### Command Line Options
 There are two uses for command line options. You can use them to run the program and to override default parameters in configuration files.
 
@@ -139,4 +147,4 @@ Attack inheritance: `DPBase` should appear before `Client`, like `class A(DPBase
 Check out the documentation and source code for further development.
 
 ## Performance Profiling
-For the profiling workflow, baseline scripts, output files, and metric interpretation, see [performance-profiling.md](performance-profiling.md).
+For the profiling workflow, baseline scripts, output files, and metric interpretation, see [performance-profiling.md](/performance-profiling).
