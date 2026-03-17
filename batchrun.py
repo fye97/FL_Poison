@@ -4,6 +4,7 @@ import os
 from multiprocessing import Pool
 from functools import partial
 import sys
+from config_utils import preset_relpath
 from global_args import read_yaml
 
 
@@ -120,14 +121,14 @@ def main(args):
     tasks = []
     for algorithm in algorithms:
         for dataset, model in datasets_models:
-            config_file = f"{algorithm}_{dataset}_config.yaml"
+            config_file = preset_relpath(algorithm, dataset).as_posix()
             for distribution in distributions:
                 for attack in attacks:
                     for defense in defenses:
                         num_clients, epoch, learning_rate = get_configs(
                             dataset, algorithm, distribution, defense)
 
-                        command = f'python -u main.py -config=./configs/{config_file} -data {dataset} -model {model} -e {epoch} -att {attack} -def {defense} -dtb {distribution} -alg {algorithm} -lr {learning_rate} -gidx {gpu_idx}'
+                        command = f'python -u main.py -config=./{config_file} -data {dataset} -model {model} -e {epoch} -att {attack} -def {defense} -dtb {distribution} -alg {algorithm} -lr {learning_rate} -gidx {gpu_idx}'
                         file_name = f'{dir}/logs/{algorithm}/{dataset}_{model}/{distribution}/{dataset}_{model}_{distribution}_{attack}_{defense}_{epoch}_{num_clients}_{learning_rate}_{algorithm}.txt'
 
                         # Add the task to the list
@@ -142,7 +143,7 @@ def main(args):
 
 
 def get_all_attacks_defenses():
-    args = vars(read_yaml('./configs/FedSGD_MNIST_config.yaml'))
+    args = vars(read_yaml(preset_relpath('FedSGD', 'MNIST').as_posix()))
     attacks = [attack_i['attack'] for attack_i in args['attacks']]
     defenses = [defense_j['defense'] for defense_j in args['defenses']]
     return attacks, defenses

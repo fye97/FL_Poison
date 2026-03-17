@@ -19,6 +19,8 @@ from typing import Any, Iterable, List, Optional, Sequence, Tuple
 
 import yaml
 
+from config_utils import preset_relpath, resolve_config_path, resolve_preset_for_scenario
+
 
 CONFIG_DEFAULT_FIELDS = (
     "dataset",
@@ -359,31 +361,8 @@ def list_spec_files() -> List[Path]:
 
 def resolve_config_for_scenario(root: Path, scenario: ScenarioSpec) -> Path:
     if scenario.config:
-        explicit = Path(scenario.config)
-        if not explicit.is_absolute():
-            explicit = (root / explicit).resolve()
-        if explicit.exists():
-            return explicit
-        raise FileNotFoundError(f"config not found: {explicit}")
-
-    candidate = root / "configs" / f"{scenario.algorithm}_{scenario.dataset}_config.yaml"
-    if candidate.exists():
-        return candidate
-
-    fallback_candidates: List[Path] = []
-    if scenario.dataset in {"MNIST", "FashionMNIST", "EMNIST"}:
-        fallback_candidates.append(root / "configs" / f"{scenario.algorithm}_MNIST_config.yaml")
-    else:
-        fallback_candidates.append(root / "configs" / f"{scenario.algorithm}_CIFAR10_config.yaml")
-    fallback_candidates.extend(sorted((root / "configs").glob(f"{scenario.algorithm}_*_config.yaml")))
-
-    for item in fallback_candidates:
-        if item.exists():
-            return item
-
-    raise FileNotFoundError(
-        f"no usable config found for algorithm={scenario.algorithm} dataset={scenario.dataset}"
-    )
+        return resolve_config_path(scenario.config, root=root)
+    return resolve_preset_for_scenario(scenario.algorithm, scenario.dataset, root=root)
 
 
 def read_config_defaults(config_file: Path) -> dict[str, str]:
@@ -1371,7 +1350,7 @@ def plan_main(args: argparse.Namespace) -> int:
         print(f"  {key}={value}")
     print("SCENARIOS")
     for idx, scenario in enumerate(spec.scenarios):
-        config = scenario.config or f"configs/{scenario.algorithm}_{scenario.dataset}_config.yaml"
+        config = scenario.config or preset_relpath(scenario.algorithm, scenario.dataset).as_posix()
         print(f"  {idx}: algorithm={scenario.algorithm} dataset={scenario.dataset} config={config}")
     print("RUN_EXAMPLES")
     print(f"  local: python exps/launch.py local {spec.path}")

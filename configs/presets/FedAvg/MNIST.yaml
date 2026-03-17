@@ -1,0 +1,35 @@
+seed: 42
+num_experiments: 1
+experiment_id: 0
+
+epochs: 300
+algorithm: FedAvg
+optimizer: SGD
+momentum: 0.9
+weight_decay: 5.0e-4
+
+num_clients: 50
+batch_size: 64
+eval_batch_size: 1024
+learning_rate: 0.01
+local_epochs: 4
+
+model: lenet
+dataset: MNIST
+distribution: iid
+im_iid_gamma: 0.01
+tail_cls_from: 4
+dirichlet_alpha: 0.5
+cache_partition: false
+gpu_idx: [0]
+num_workers: 0
+record_time: false
+log_stream: true
+
+num_adv: 0.48
+attack: NoAttack
+defense: Mean
+
+catalogs:
+  attacks: mnist
+  defenses: mnist

@@ -1,7 +1,7 @@
+import ast
 import os
 import sys
 import torch
-import yaml
 from eval_schedule import DEFAULT_EVAL_INTERVAL
 from aggregators import all_aggregators
 from attackers import data_poisoning_attacks, model_poisoning_attacks
@@ -9,7 +9,16 @@ from fl.models import all_models
 from fl.algorithms import all_algorithms
 import argparse
 from types import SimpleNamespace
+from config_utils import (
+    load_dataset_catalog,
+    load_experiment_config,
+    resolve_config_path,
+    validate_experiment_config,
+)
 from global_utils import frac_or_int_to_int
+
+
+KNOWN_ATTACKS = ['NoAttack'] + model_poisoning_attacks + data_poisoning_attacks
 
 
 def _normalize_single_dash_long_opts(argv, parser):
@@ -52,9 +61,9 @@ def _normalize_single_dash_long_opts(argv, parser):
 def read_args():
     """
     1. parse command line arguments for configuration path and possible arguments.
-    2. load configurations to `config` from the provided YAML file.
-    3. load data configurations from the `dataset_config.yaml` file, while overriding `epochs` and learning rate `lr`.
-    4. override the `config` with command line arguments if provided.
+    2. load the experiment preset from the provided YAML file, including shared attack/defense catalogs.
+    3. load dataset metadata from `configs/catalog/datasets.yaml`.
+    4. override the preset with command line arguments if provided.
     return the `config` object with all configurations.
     """
     parser = argparse.ArgumentParser(
@@ -102,10 +111,8 @@ def read_args():
                         help='smaller alpha for class imbalanced distribution, stronger heterogeneity, 0.05, 0.1, 0.5')
 
     # attacks and defenses settings
-    all_attacks = ['NoAttack'] + \
-        model_poisoning_attacks + data_poisoning_attacks
     parser.add_argument('-att', '-attack', '--attack',
-                        choices=all_attacks, help="Attacks options")
+                        choices=KNOWN_ATTACKS, help="Attacks options")
     parser.add_argument('-attack_start_epoch', '--attack_start_epoch',
                         type=int, help="the attack start epoch")
     parser.add_argument('-attparam', '--attparam', type=float,
@@ -168,11 +175,23 @@ def read_args():
 
 
 def read_yaml(filename):
-    # read configurations from yaml file to args dict object
-    with open(filename.strip(), 'r') as file:
-        args_dict = yaml.load(file, Loader=yaml.FullLoader)
+    resolved = resolve_config_path(filename)
+    args_dict = load_experiment_config(resolved)
+    validate_experiment_config(
+        args_dict,
+        source=resolved,
+        known_attacks=KNOWN_ATTACKS,
+        known_defenses=all_aggregators,
+    )
     args = SimpleNamespace(**args_dict)
     return args
+
+
+def _lookup_component_params(args, param_type, selected_name):
+    for item in getattr(args, f"{param_type}s", []):
+        if item.get(param_type) == selected_name:
+            return item.get(f"{param_type}_params")
+    return None
 
 
 def override_args(args, cli_args):
@@ -191,11 +210,11 @@ def override_args(args, cli_args):
     # fill the attack and defense parameters with default
     for param_type in ['attack', 'defense']:
         if not hasattr(args, f"{param_type}_params"):
-            for i in eval(f"args.{param_type}s"):
-                if i[param_type] == eval(f"args.{param_type}"):
-                    setattr(args, f"{param_type}_params",
-                            i.get(f'{param_type}_params'))
-                    break
+            setattr(
+                args,
+                f"{param_type}_params",
+                _lookup_component_params(args, param_type, getattr(args, param_type)),
+            )
 
     # override parameters
     # if only attack or defense is provided, set their corresponding params to default
@@ -210,19 +229,20 @@ def override_args(args, cli_args):
 
     # override attack, defense, attack_params, defense_params
     for param_type in ['attack', 'defense']:
-        if eval(f"cli_args.{param_type}"):  # if not None
-            setattr(args, param_type, eval(f"cli_args.{param_type}"))
+        selected_name = getattr(cli_args, param_type)
+        if selected_name:  # if not None
+            setattr(args, param_type, selected_name)
             # if attack_params or defense_params is provided by cli_args, override the corresponding params
-            if eval(f"cli_args.{param_type}_params"):
+            selected_params = getattr(cli_args, f"{param_type}_params")
+            if selected_params:
                 setattr(args, f'{param_type}_params',
-                        eval(f"cli_args.{param_type}_params"))
+                        ast.literal_eval(selected_params))
             else:
-                # if not provided, set the params to default
-                for i in eval(f"args.{param_type}s"):
-                    if i[param_type] == eval(f"args.{param_type}"):
-                        setattr(args, f"{param_type}_params",
-                                i.get(f"{param_type}_params"))
-                        break
+                setattr(
+                    args,
+                    f"{param_type}_params",
+                    _lookup_component_params(args, param_type, selected_name),
+                )
 
 
 def benchmark_preprocess(args):
@@ -241,12 +261,10 @@ def benchmark_preprocess(args):
 
 
 def single_preprocess(args):
-    # load dataset configurations, also include learning rate and epochs
-    with open("./configs/dataset_config.yaml", 'r') as file:
-        dataset_config = yaml.load(file, Loader=yaml.FullLoader)
+    dataset_config = load_dataset_catalog()
     for key, value in dataset_config[args.dataset].items():
         if key in ['mean', 'std']:
-            value = eval(value)
+            value = tuple(value)
         setattr(args, key, value)
 
     # preprocess the arguments

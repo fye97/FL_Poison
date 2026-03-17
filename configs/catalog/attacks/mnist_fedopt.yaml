@@ -1,0 +1,94 @@
+attacks:
+  - attack: NoAttack
+  - attack: IPM
+    attack_params:
+      scaling_factor: 0.5
+  - attack: ALIE
+    attack_params:
+      attack_start_epoch: 41
+  - attack: Gaussian
+    attack_params:
+      noise_mean: 0
+      noise_std: 1
+  - attack: Mimic
+    attack_params:
+      choice: 0
+  - attack: MinMax
+    attack_params:
+      gamma_init: 10
+      stop_threshold: 1.0e-5
+  - attack: MinSum
+    attack_params:
+      gamma_init: 10
+      stop_threshold: 1.0e-5
+  - attack: FangAttack
+    attack_params:
+      stop_threshold: 1.0e-5
+  - attack: BadNets
+    attack_params:
+      trigger_size: 5
+      attack_model: all2one
+      poisoning_ratio: 0.32
+      target_label: 7
+      attack_strategy: continuous
+  - attack: BadNets_image
+    attack_params:
+      trigger_path: ./attackers/triggers/trigger_white.png
+      trigger_size: 5
+      attack_model: all2one
+      poisoning_ratio: 0.32
+      target_label: 7
+      attack_strategy: continuous
+  - attack: LabelFlipping
+    attack_params:
+      attack_model: targeted
+      source_label: 3
+      target_label: 7
+      attack_strategy: continuous
+  - attack: ModelReplacement
+    attack_params:
+      scaling_factor: 50
+      alpha: 0.5
+      attack_model: all2one
+      poisoning_ratio: 0.32
+      source_label: 2
+      target_label: 7
+      attack_strategy: continuous
+  - attack: DBA
+    attack_params:
+      attack_model: all2one
+      scaling_factor: 100
+      trigger_factor: [10, 2, 0]
+      poisoning_ratio: 0.32
+      source_label: 2
+      target_label: 7
+      attack_strategy: continuous
+  - attack: EdgeCase
+    attack_params:
+      poisoning_ratio: 1
+      epsilon: 0.25
+      projection_type: l_2
+      l2_proj_frequency: 1
+      scaling_attack: true
+      scaling_factor: 50
+      target_label: 1
+  - attack: Neurotoxin
+    attack_params:
+      num_sample: 64
+      topk_ratio: 0.1
+      norm_threshold: 0.2
+      attack_model: all2one
+      poisoning_ratio: 0.32
+      source_label: 1
+      target_label: 6
+      attack_strategy: continuous
+  - attack: AlterMin
+    attack_params:
+      attack_model: targeted
+      poisoned_sample_cnt: 1
+      boosting_factor: 50
+      rho: 1.0e-4
+      benign_epochs: 10
+      malicous_epochs: 1
+      source_label: 3
+      target_label: 7

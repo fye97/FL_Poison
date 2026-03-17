@@ -1,0 +1,73 @@
+MNIST:
+  num_training_sample: 60000
+  num_channels: 1
+  num_classes: 10
+  mean: [0.1307]
+  std: [0.3081]
+
+FashionMNIST:
+  num_training_sample: 60000
+  num_channels: 1
+  num_classes: 10
+  mean: [0.2859]
+  std: [0.353]
+
+CIFAR10:
+  num_training_sample: 50000
+  num_channels: 3
+  num_classes: 10
+  mean: [0.4914, 0.4822, 0.4465]
+  std: [0.247, 0.243, 0.261]
+
+CINIC10:
+  num_training_sample: 90000
+  num_channels: 3
+  num_classes: 10
+  mean: [0.47889522, 0.47227842, 0.43047404]
+  std: [0.24205776, 0.23828046, 0.25874835]
+
+CIFAR100:
+  num_training_sample: 50000
+  num_channels: 3
+  num_classes: 100
+  mean: [0.5071, 0.4865, 0.4409]
+  std: [0.2673, 0.2564, 0.2762]
+
+EMNIST:
+  num_training_sample: 240000
+  num_channels: 1
+  num_classes: 10
+  mean: [0.1307]
+  std: [0.3081]
+
+FEMNIST:
+  num_training_sample: 817851
+  num_channels: 1
+  num_classes: 62
+  mean: [226.83]
+  std: [88.94]
+
+CHMNIST:
+  num_training_sample: 4000
+  num_channels: 3
+  num_classes: 8
+  mean: [0.6497, 0.4725, 0.585]
+  std: [0.2558, 0.3272, 0.2673]
+  num_dims: 150
+
+TinyImageNet:
+  num_training_sample: 100000
+  num_channels: 3
+  num_classes: 200
+  num_dims: 64
+  mean: [0.485, 0.456, 0.406]
+  std: [0.229, 0.224, 0.225]
+
+HAR:
+  num_training_sample: 7352
+  num_channels: 1
+  num_classes: 6
+  num_dims: 1
+  num_features: 561
+  mean: [0.0]
+  std: [1.0]

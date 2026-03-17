@@ -4,7 +4,7 @@ Run a single fixed-configuration profiling experiment and emit a concise baselin
 
 Example:
   python tests/perf/profile_single_run.py \
-    --config configs/FedSGD_MNIST_config.yaml \
+    --config configs/presets/FedSGD/MNIST.yaml \
     --defense Mean \
     --epochs 20 \
     --num-clients 10 \
@@ -31,6 +31,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from config_utils import resolve_config_path
 from performance_utils import perf_summary_path
 
 
@@ -196,9 +197,7 @@ def print_summary(summary: dict[str, Any], perf_json: Path) -> None:
 def main() -> int:
     args = parse_args()
     root = repo_root()
-    source_config = (root / args.config).resolve()
-    if not source_config.exists():
-        raise FileNotFoundError(f"Config not found: {source_config}")
+    source_config = resolve_config_path(args.config, root=root)
 
     output_root = (
         Path(args.output_root).expanduser().resolve()

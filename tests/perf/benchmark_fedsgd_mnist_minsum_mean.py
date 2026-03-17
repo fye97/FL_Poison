@@ -3,7 +3,7 @@
 Benchmark the current workspace against the pre-optimization baseline tag.
 
 Default experiment:
-  python main.py --config=./configs/FedSGD_MNIST_config.yaml --attack=MinSum --defense=Mean
+  python main.py --config=./configs/presets/FedSGD/MNIST.yaml --attack=MinSum --defense=Mean
 
 This script compares:
   - baseline: git tag/ref `v1.0.0`
@@ -42,6 +42,12 @@ from typing import Any
 
 import yaml
 
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from config_utils import resolve_config_path
+
 
 TIME_LOG_RE = re.compile(
     r"^(?P<subject>[^,]+), (?P<method>[A-Za-z_]+) averge time: (?P<avg>[0-9.]+) s, call time: (?P<calls>\d+)$"
@@ -74,8 +80,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--config",
-        default="configs/FedSGD_MNIST_config.yaml",
-        help="Repo-relative config path used in both baseline and current runs.",
+        default="configs/presets/FedSGD/MNIST.yaml",
+        help="Repo-relative canonical config path used in both baseline and current runs.",
     )
     parser.add_argument("--attack", default="MinSum", help="Attack override.")
     parser.add_argument("--defense", default="Mean", help="Defense override.")
@@ -120,7 +126,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def repo_root() -> Path:
-    return Path(__file__).resolve().parents[2]
+    return ROOT
 
 
 def resolve_python_bin(root: Path, requested: str | None) -> Path:
@@ -479,15 +485,17 @@ def main() -> int:
     root = repo_root()
     python_bin = resolve_python_bin(root, args.python_bin)
     config_rel = Path(args.config)
-    current_config = (root / config_rel).resolve()
-    if not current_config.exists():
-        raise FileNotFoundError(f"Config not found: {current_config}")
+    current_config = resolve_config_path(config_rel, root=root)
 
     baseline_root, baseline_commit = ensure_worktree(root, args.baseline_ref)
     ensure_shared_data_dir(root, baseline_root)
-    baseline_config = (baseline_root / config_rel).resolve()
-    if not baseline_config.exists():
-        raise FileNotFoundError(f"Baseline config not found: {baseline_config}")
+    try:
+        baseline_config = resolve_config_path(config_rel, root=baseline_root)
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(
+            f"Baseline ref {args.baseline_ref} does not contain canonical config path {config_rel}. "
+            "This benchmark helper no longer supports the pre-refactor flat configs layout."
+        ) from exc
 
     current_commit = run_git(root, "rev-parse", "HEAD")
     output_root = Path(args.output_root).expanduser().resolve() if args.output_root else default_output_root(root)
