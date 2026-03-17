@@ -1,0 +1,41 @@
+name: cifar10
+description: FedAvg poisoning benchmark on CIFAR10.
+
+scenarios:
+  - algorithm: FedAvg
+    dataset: CIFAR10
+
+matrix:
+  attacks:
+    - NoAttack
+    - MinMax
+    - MinSum
+    - ALIE
+    - FangAttack
+  defenses:
+    - Mean
+    - TriGuardFL
+    - FLDetector
+    - FLTrust
+    - MultiKrum
+    - NormClipping
+
+repeats:
+  count: 5
+  start: 0
+
+runtime:
+  gpu_idx: 0
+
+slurm:
+  account: def-lincai
+  time: 0-12:00:00
+  gpus: nvidia_h100_80gb_hbm3_2g.20gb:1
+  cpus_per_task: 8
+  mem: 64G
+  requeue: true
+  output: /home/%u/FL_Poison/logs/slurm/%x_%A_%a.out
+  error: /home/%u/FL_Poison/logs/slurm/%x_%A_%a.err
+  mail_user: fengye@uvic.ca
+  mail_type: ALL
+  array_parallel: 3
