@@ -59,6 +59,7 @@ def test_runtime_profiler_writes_summary_json(tmp_path):
         total_sec=0.50,
         train_acc=0.8,
         train_loss=1.2,
+        train_samples=64,
         test_stats={"Test Acc": 0.75},
     )
     payload = profiler.finalize()
@@ -66,9 +67,12 @@ def test_runtime_profiler_writes_summary_json(tmp_path):
     assert perf_summary_path(output_path).exists()
     assert payload["overall"]["sec_per_round"] == pytest.approx(0.50)
     assert payload["overall"]["final_train_accuracy"] == pytest.approx(0.8)
+    assert payload["overall"]["final_train_samples"] == 64
     assert payload["overall"]["final_test_metrics"]["Test Acc"] == pytest.approx(0.75)
     assert payload["rounds"][0]["stage_times"]["defense"] == pytest.approx(0.05)
     assert payload["rounds"][0]["stage_times"]["aggregate"] == pytest.approx(0.03)
+    assert payload["rounds"][0]["round_time_sec"] == pytest.approx(0.50)
+    assert payload["rounds"][0]["train_metrics"]["train_samples"] == 64
 
 
 def test_runtime_profiler_aggregation_falls_back_to_total_time(tmp_path):
@@ -78,7 +82,7 @@ def test_runtime_profiler_aggregation_falls_back_to_total_time(tmp_path):
 
     profiler.start_round(0)
     profiler.finish_aggregation(0.12)
-    profiler.finish_round(total_sec=0.20, train_acc=0.5, train_loss=2.0)
+    profiler.finish_round(total_sec=0.20, train_acc=0.5, train_loss=2.0, train_samples=32)
     payload = profiler.finalize()
 
     assert payload["rounds"][0]["aggregation_split_available"] is False

@@ -73,8 +73,10 @@ class AlterMin(MPBase, DPBase, Client):
 
     def local_training(self):
         # 1. benign training with stealth objectives (normal+distance loss) on benign data
-        train_acc, train_loss = super().local_training(
+        train_acc, train_loss, train_samples = super().local_training(
             criterion_fn=self.stealth_loss, local_epochs=self.benign_epochs)
+        total_correct = train_acc * train_samples
+        total_loss_sum = train_loss * train_samples
         # 2. get asr (attack success rate) loss, if asr loss > 0, do targeted objective optimization
         asr, asr_loss = self.test(self.model, self.poisoned_loader)
         # optimize the target objective if malicious loss is not zero yet
@@ -82,8 +84,13 @@ class AlterMin(MPBase, DPBase, Client):
             # 3. get weights before and after malicious training
             pre_train_weights = copy.deepcopy(model2vec(self.model))
             # malicious training with adversarial objectives on poisoned data
-            super().local_training(train_loader=self.cycle(
-                self.poisoned_loader), local_epochs=self.malicous_epochs)
+            poison_acc, poison_loss, poison_samples = super().local_training(
+                train_loader=self.cycle(self.poisoned_loader),
+                local_epochs=self.malicous_epochs,
+            )
+            total_correct += poison_acc * poison_samples
+            total_loss_sum += poison_loss * poison_samples
+            train_samples += poison_samples
             post_train_weights = copy.deepcopy(model2vec(self.model))
 
             # 5. check target objective condition. If not, do targeted objective optimization, explicit boosting
@@ -91,7 +98,14 @@ class AlterMin(MPBase, DPBase, Client):
                 (post_train_weights - pre_train_weights)
             # 6. load the boosted weights to the model parameters
             vec2model(boosted_weights, self.model)
-        return train_acc, train_loss
+        train_acc = (total_correct / train_samples) if train_samples > 0 else 0.0
+        train_loss = (total_loss_sum / train_samples) if train_samples > 0 else 0.0
+        self.last_local_training_stats = {
+            "train_acc": float(train_acc),
+            "train_loss": float(train_loss),
+            "num_samples": int(train_samples),
+        }
+        return train_acc, train_loss, train_samples
 
     def stealth_loss(self, y_pred, y_true):
         """rewrite the criterion function to include the distance loss

@@ -1,4 +1,4 @@
-DEFAULT_EVAL_INTERVAL = 5
+DEFAULT_EVAL_INTERVAL = 10
 
 
 def should_run_evaluation(global_epoch: int, total_epochs: int, eval_interval: int) -> bool:

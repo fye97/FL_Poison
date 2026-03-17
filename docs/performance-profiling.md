@@ -33,7 +33,8 @@
   - `evaluation`
   - `logging`
 - 记录 GPU utilization、显存平均占用、显存峰值
-- 记录最终 `train accuracy` / `Test Acc`
+- 记录每轮轻量日志里的 `train accuracy` / `train loss` / `train samples` / `round time`
+- 记录最终 `train accuracy` / `train samples` / `Test Acc`
 - 运行 `torch.profiler`，输出 CPU/CUDA trace 与 profiler 摘要
 
 ---
@@ -163,6 +164,7 @@ gpu compute/round: 2.4%
 gpu mem avg: 24.9MB
 gpu mem peak: 31.0MB
 train accuracy: 0.2313
+train samples: 640
 val accuracy: 0.2562
 ```
 
@@ -190,6 +192,7 @@ val accuracy: 0.2562
 - `overall.gpu_memory_peak_allocated_mb`
 - `overall.stage_time_sec_avg`
 - `overall.final_train_accuracy`
+- `overall.final_train_samples`
 - `overall.final_test_metrics`
 
 如果要看逐轮细节，读：
@@ -207,7 +210,7 @@ val accuracy: 0.2562
 建议至少保留两种 baseline：
 
 1. 端到端 baseline
-- 默认 `eval_interval=5`
+- 默认 `eval_interval=10`
 - 适合看完整训练轮的真实业务耗时
 
 2. 训练吞吐 baseline

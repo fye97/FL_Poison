@@ -8,7 +8,7 @@ from tqdm import tqdm
 from eval_schedule import should_run_evaluation
 from fl import coordinator
 from global_args import benchmark_preprocess, read_args, override_args, single_preprocess
-from global_utils import avg_value, print_filtered_args, setup_logger, setup_seed
+from global_utils import print_filtered_args, setup_logger, setup_seed
 from datapreprocessor.data_utils import load_data, split_dataset
 from fl.server import Server
 from plot_utils import plot_accuracy
@@ -94,17 +94,29 @@ def fl_run(args):
             global_weights_vec = the_server.global_weights_vec
 
             # clients' local training
-            avg_train_acc, avg_train_loss = [], []
+            round_train_correct = 0.0
+            round_train_loss_sum = 0.0
+            round_train_samples = 0
             for client in clients:
                 client.load_global_model(global_weights_vec)
-                train_acc, train_loss = client.local_training()
+                train_acc, train_loss, train_samples = client.local_training()
                 client.fetch_updates()
-                avg_train_acc.append(train_acc)
-                avg_train_loss.append(train_loss)
+                round_train_correct += train_acc * train_samples
+                round_train_loss_sum += train_loss * train_samples
+                round_train_samples += train_samples
 
-            avg_train_loss = avg_value(avg_train_loss)
-            avg_train_acc = avg_value(avg_train_acc)
-            epoch_msg += f"\tTrain Acc: {avg_train_acc:.4f}\tTrain loss: {avg_train_loss:.4f}\t"
+            avg_train_acc = (
+                round_train_correct / round_train_samples
+                if round_train_samples > 0 else 0.0
+            )
+            avg_train_loss = (
+                round_train_loss_sum / round_train_samples
+                if round_train_samples > 0 else 0.0
+            )
+            epoch_msg += (
+                f"\tTrain Acc: {avg_train_acc:.4f}\tTrain loss: {avg_train_loss:.4f}"
+                f"\tTrain samples: {round_train_samples}\t"
+            )
 
             # perform post-training attacks, for omniscient model poisoning attack, pass all clients
             omniscient_attack(clients)
@@ -131,6 +143,8 @@ def fl_run(args):
 
             # print the training and testing results of the current global_epoch
             log_start = time.perf_counter()
+            round_time_sec = time.perf_counter() - round_start
+            epoch_msg += f"Round time: {round_time_sec:.2f}s\t"
             if test_stats:
                 epoch_msg += "\t".join(
                     [f"{key}: {value:.4f}" for key, value in test_stats.items()])
@@ -142,6 +156,7 @@ def fl_run(args):
                     total_sec=time.perf_counter() - round_start,
                     train_acc=avg_train_acc,
                     train_loss=avg_train_loss,
+                    train_samples=round_train_samples,
                     test_stats=test_stats,
                 )
             if torch_profiler is not None:

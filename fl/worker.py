@@ -79,10 +79,10 @@ class Worker:
             loss = criterion_fn(pred_probs, targets)
             loss.backward()
         predicted = torch.argmax(pred_probs, dim=1)
-        train_acc = (predicted == targets).sum().item()
-        train_loss = loss.item()
-        train_acc /= len(images)
-        return train_acc, train_loss
+        batch_samples = len(images)
+        batch_correct = (predicted == targets).sum().item()
+        batch_loss_sum = loss.item() * batch_samples
+        return batch_correct, batch_loss_sum, batch_samples
 
     def step(self, optimizer, **kwargs):
         if self.runtime_profiler is not None:

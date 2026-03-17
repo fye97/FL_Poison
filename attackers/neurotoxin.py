@@ -48,8 +48,8 @@ class Neurotoxin(MPBase, DPBase, Client):
         # 1. get unfrequently-used gradient mask via global model and clean data
         self.grad_mask_vec = self.get_gradient_mask()
         # 2. backdoor training while apply the gradient mask and PGD in step()
-        train_acc, train_loss = super().local_training()
-        return train_acc, train_loss
+        train_acc, train_loss, train_samples = super().local_training()
+        return train_acc, train_loss, train_samples
 
     def get_gradient_mask(self):
         """

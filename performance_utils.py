@@ -317,6 +317,7 @@ class RuntimeProfiler:
             "rounds_per_sec": None,
             "gpu_compute_ratio": None,
             "aggregation_split_available": False,
+            "round_time_sec": 0.0,
             "total_sec": 0.0,
         }
         self._aggregation_breakdown = None
@@ -374,14 +375,17 @@ class RuntimeProfiler:
         self._current_round["stage_times"]["defense"] += defense_time
         self._aggregation_breakdown = None
 
-    def finish_round(self, total_sec, train_acc, train_loss, test_stats=None):
+    def finish_round(self, total_sec, train_acc, train_loss, train_samples=0, test_stats=None):
         if self._current_round is None:
             raise RuntimeError("No active round to finish.")
 
-        self._current_round["total_sec"] = float(total_sec)
+        total_sec = float(total_sec)
+        self._current_round["round_time_sec"] = total_sec
+        self._current_round["total_sec"] = total_sec
         self._current_round["train_metrics"] = {
             "train_acc": float(train_acc),
             "train_loss": float(train_loss),
+            "train_samples": int(train_samples),
         }
         self._current_round["test_metrics"] = {
             key: float(value) for key, value in (test_stats or {}).items()
@@ -525,6 +529,10 @@ class RuntimeProfiler:
             "train accuracy: "
             f"{_fmt_float(round_record['train_metrics'].get('train_acc'), digits=4)}"
         )
+        lines.append(
+            "train samples: "
+            f"{round_record['train_metrics'].get('train_samples', 0)}"
+        )
         if "Test Acc" in round_record["test_metrics"]:
             lines.append(
                 "val accuracy: "
@@ -588,6 +596,9 @@ class RuntimeProfiler:
             ),
             "final_train_loss": (
                 final_round["train_metrics"].get("train_loss") if final_round is not None else None
+            ),
+            "final_train_samples": (
+                final_round["train_metrics"].get("train_samples") if final_round is not None else None
             ),
             "final_test_metrics": (
                 final_round["test_metrics"] if final_round is not None else {}

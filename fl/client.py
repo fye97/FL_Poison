@@ -4,7 +4,7 @@ from fl.algorithms import get_algorithm_handler
 from fl.models import get_model
 from fl.models.model_utils import vec2model
 from fl.worker import Worker
-from global_utils import actor, avg_value
+from global_utils import actor
 from global_utils import TimingRecorder
 
 
@@ -23,6 +23,11 @@ class Client(Worker):
 
         self.train_loader = self.get_dataloader(
             self.train_dataset, train_flag=True)
+        self.last_local_training_stats = {
+            "train_acc": 0.0,
+            "train_loss": 0.0,
+            "num_samples": 0,
+        }
 
         self.record_time(self.args.record_time)
 
@@ -71,21 +76,30 @@ class Client(Worker):
         train_iterator = iter(train_loader) if isinstance(
             train_loader, torch.utils.data.DataLoader) else train_loader
         model.train()
-        acc_values, loss_values = [], []
+        total_correct, total_loss_sum, total_samples = 0, 0.0, 0
         for epoch in range(local_epochs):
-            acc, loss = self.train(model, train_iterator,
-                                   optimizer, criterion_fn)
-            acc_values.append(acc)
-            loss_values.append(loss)
+            batch_correct, batch_loss_sum, batch_samples = self.train(
+                model, train_iterator, optimizer, criterion_fn)
+            total_correct += batch_correct
+            total_loss_sum += batch_loss_sum
+            total_samples += batch_samples
             self.step(optimizer, cur_local_epoch=epoch)
         self.lr_scheduler.step()
 
-        return avg_value(acc_values), avg_value(loss_values)
+        train_acc = (total_correct / total_samples) if total_samples > 0 else 0.0
+        train_loss = (total_loss_sum / total_samples) if total_samples > 0 else 0.0
+        self.last_local_training_stats = {
+            "train_acc": float(train_acc),
+            "train_loss": float(train_loss),
+            "num_samples": int(total_samples),
+        }
+
+        return train_acc, train_loss, total_samples
         # client side debug usage
         # if "data_poisoning" in self.attributes:
         #     return self.client_asr_test()
         # else:
-        #     return avg_value(acc_values), avg_value(loss_values)
+        #     return train_acc, train_loss, total_samples
         # return client_test()
 
     def fetch_updates(self, benign_flag=False):

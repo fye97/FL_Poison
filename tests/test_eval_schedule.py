@@ -24,5 +24,5 @@ def test_should_run_evaluation_still_runs_final_round_when_interval_is_large():
     assert scheduled == [2]
 
 
-def test_default_eval_interval_is_five():
-    assert DEFAULT_EVAL_INTERVAL == 5
+def test_default_eval_interval_is_ten():
+    assert DEFAULT_EVAL_INTERVAL == 10

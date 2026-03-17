@@ -29,7 +29,7 @@
 | `eval_batch_size` | int | 评估/推理时使用的 batch size。未设置时回退到 `batch_size`。 |
 | `learning_rate` | float | 客户端本地学习率。 |
 | `local_epochs` | int | 本地训练轮数。对 `FedAvg`/`FedOpt` 生效；`FedSGD` 固定为 1。 |
-| `eval_interval` | int | 每隔多少个 global round 进行一次完整评估。默认每 `5` 轮评估一次，最后一轮始终评估。 |
+| `eval_interval` | int | 每隔多少个 global round 进行一次完整评估。默认每 `10` 轮评估一次，最后一轮始终评估。 |
 | `model` | 见下方“模型选项” | 模型架构名。 |
 | `dataset` | 见下方“数据集选项” | 数据集名称。 |
 | `distribution` | `iid`, `class-imbalanced_iid`, `non-iid`, `pat`, `imbalanced_pat` | 数据划分方式。当前代码仅实现 `iid`/`class-imbalanced_iid`/`non-iid`。 |
@@ -105,7 +105,8 @@ defenses:
   - 系统信息：GPU 型号、PyTorch 版本、CUDA 版本
   - round 级指标：`sec/round`、`sec/client`、`gpu utilization`、`gpu compute ratio`、`显存峰值`
   - 最终精度：`train accuracy`、`Test Acc`（以及存在时的 ASR 指标）
-- `train accuracy` / `train loss` 来自训练过程中的在线统计，不会为了记录 `train_metrics` 再额外完整扫描一遍 train set。
+- 训练日志每轮都会输出轻量级在线统计：`Train Acc`、`Train loss`、`Train samples`、`Round time`。
+- `train accuracy` / `train loss` / `train_samples` 来自训练过程中的在线统计，不会为了记录 `train_metrics` 再额外完整扫描一遍 train set。
 - `test_metrics` 只在评估轮写入；非评估轮该字段为空对象是预期行为。
 - `torch_profile=True` 时，会在 `logs/torch_traces/...` 下输出 trace 文件，并在训练日志尾部打印 top ops/hints，用于检查 `cudaMemcpyAsync`、小 kernel、DataLoader、Python 开销。
 - 推荐用 `tests/perf/profile_single_run.py` 固定基线配置并执行单次 profiling run。
