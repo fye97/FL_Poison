@@ -1,5 +1,6 @@
 from aggregators.aggregatorbase import AggregatorBase
 import numpy as np
+import torch
 
 from aggregators import aggregator_registry
 
@@ -11,9 +12,13 @@ class Median(AggregatorBase):
     Coordinated Median computes the median of the updates coordinate-wisely.
     """
 
+    supports_torch_updates = True
+
     def __init__(self, args, **kwargs):
         super().__init__(args)
 
     def aggregate(self, updates, **kwargs):
         with self.profile_substage("aggregate"):
+            if torch.is_tensor(updates):
+                return torch.median(updates, dim=0).values
             return np.median(updates, axis=0)

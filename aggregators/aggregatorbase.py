@@ -6,6 +6,8 @@ class AggregatorBase():
     """Base class of aggregators.
     """
 
+    supports_torch_updates = False
+
     def __init__(self, args, **kwargs):
         self.args = args
         self.runtime_profiler = None

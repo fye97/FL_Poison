@@ -1,4 +1,5 @@
 from fl.models.model_utils import model2vec, vec2model
+import torch
 from .algorithmbase import AlgorithmBase
 from fl.algorithms import algorithm_registry
 
@@ -13,7 +14,10 @@ class FedAvg(AlgorithmBase):
         return self.args.local_epochs
 
     def get_local_update(self, **kwargs):
-        update = model2vec(self.model)
+        update = model2vec(
+            self.model,
+            return_torch=torch.is_tensor(kwargs.get("global_weights_vec")),
+        )
         return update
 
     # for server

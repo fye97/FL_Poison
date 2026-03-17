@@ -1,5 +1,6 @@
 import numpy as np
 import time
+import torch
 from aggregators import get_aggregator
 from fl.algorithms import get_algorithm_handler
 from fl.models import get_model
@@ -16,17 +17,24 @@ class Server(Worker):
         self.test_dataset = test_dataset
         self.train_dataset = train_dataset  # it's only used in the defense FLTrust
 
-        # initialize the global model and flattened-model
-        self.global_model = get_model(args)
-        self.global_weights_vec = model2vec(
-            self.global_model)
-
-        self.aggregated_update = np.zeros_like(
-            self.global_weights_vec, dtype=np.float32)
-
         # initialize the aggregator for the server
         self.aggregator = get_aggregator(
             self.args.defense)(self.args, train_dataset=self.train_dataset)
+        self.use_torch_updates = bool(
+            getattr(self.aggregator, "supports_torch_updates", False)
+            and getattr(self.args, "attack", "NoAttack") == "NoAttack"
+        )
+
+        # Keep Mean-like aggregation on torch to avoid repeated GPU<->CPU vector copies.
+        self.global_model = get_model(args)
+        self.global_weights_vec = model2vec(
+            self.global_model, return_torch=self.use_torch_updates)
+
+        if self.use_torch_updates:
+            self.aggregated_update = torch.zeros_like(self.global_weights_vec)
+        else:
+            self.aggregated_update = np.zeros_like(
+                self.global_weights_vec, dtype=np.float32)
 
         if self.args.record_time:
             self.time_recorder = TimingRecorder(self.worker_id,
@@ -42,30 +50,63 @@ class Server(Worker):
         self.algorithm = get_algorithm_handler(
             algorithm)(self.args, self.global_model)
 
+    def _coerce_update_array(self, update):
+        if torch.is_tensor(update):
+            return update.detach().reshape(-1).cpu().numpy()
+        return np.asarray(update).reshape(-1)
+
+    def _coerce_update_tensor(self, update):
+        ref = self.global_weights_vec
+        if not torch.is_tensor(ref):
+            raise TypeError("Torch update path requires tensor global_weights_vec")
+        if torch.is_tensor(update):
+            return update.detach().reshape(-1).to(device=ref.device, dtype=ref.dtype)
+        return torch.as_tensor(update, device=ref.device, dtype=ref.dtype).reshape(-1)
+
     def collect_updates(self, global_epoch):
         start_time = time.perf_counter()
         self.global_epoch = global_epoch
         # get the client update from clients
         updates = [client.update for client in self.clients]
         if not updates:
-            self.client_updates = np.empty((0, 0), dtype=np.float32)
+            if getattr(self, "use_torch_updates", False):
+                self.client_updates = torch.empty(
+                    (0, 0),
+                    device=self.global_weights_vec.device,
+                    dtype=self.global_weights_vec.dtype,
+                )
+            else:
+                self.client_updates = np.empty((0, 0), dtype=np.float32)
             if self.runtime_profiler is not None:
                 self.runtime_profiler.add_server_stage(
                     "collect_updates", time.perf_counter() - start_time)
             return
-        first = np.asarray(updates[0]).reshape(-1)
-        num_clients = len(updates)
-        num_params = first.size
-        stacked = np.empty((num_clients, num_params), dtype=first.dtype)
-        stacked[0] = first
-        for idx, update in enumerate(updates[1:], start=1):
-            arr = np.asarray(update).reshape(-1)
-            if arr.size != num_params:
-                raise ValueError(
-                    f"Inconsistent update size: client {idx} has {arr.size}, expected {num_params}")
-            if arr.dtype != first.dtype:
-                arr = arr.astype(first.dtype, copy=False)
-            stacked[idx] = arr
+
+        if getattr(self, "use_torch_updates", False):
+            first = self._coerce_update_tensor(updates[0])
+            num_params = first.numel()
+            tensors = [first]
+            for idx, update in enumerate(updates[1:], start=1):
+                arr = self._coerce_update_tensor(update)
+                if arr.numel() != num_params:
+                    raise ValueError(
+                        f"Inconsistent update size: client {idx} has {arr.numel()}, expected {num_params}")
+                tensors.append(arr)
+            stacked = torch.stack(tensors, dim=0)
+        else:
+            first = self._coerce_update_array(updates[0])
+            num_clients = len(updates)
+            num_params = first.size
+            stacked = np.empty((num_clients, num_params), dtype=first.dtype)
+            stacked[0] = first
+            for idx, update in enumerate(updates[1:], start=1):
+                arr = self._coerce_update_array(update)
+                if arr.size != num_params:
+                    raise ValueError(
+                        f"Inconsistent update size: client {idx} has {arr.size}, expected {num_params}")
+                if arr.dtype != first.dtype:
+                    arr = arr.astype(first.dtype, copy=False)
+                stacked[idx] = arr
         self.client_updates = stacked
         if self.runtime_profiler is not None:
             self.runtime_profiler.add_server_stage(

@@ -1,5 +1,5 @@
 from fl.models.model_utils import model2vec, vec2model
-from fl.models.model_utils import model2vec
+import torch
 from .algorithmbase import AlgorithmBase
 from fl.algorithms import algorithm_registry
 
@@ -15,7 +15,9 @@ class FedSGD(AlgorithmBase):
 
     def get_local_update(self, **kwargs):
         global_weights_vec = kwargs['global_weights_vec']
-        update = model2vec(self.model) - global_weights_vec
+        update = model2vec(
+            self.model, return_torch=torch.is_tensor(global_weights_vec)
+        ) - global_weights_vec
         return update
 
     # for server
