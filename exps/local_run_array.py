@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-Run a Slurm-array style bash script locally by iterating SLURM_ARRAY_TASK_ID.
+Run an experiment wrapper locally by iterating SLURM_ARRAY_TASK_ID.
 
-This is intended to mimic workflows like:
-  sbatch --array=0-(TOTAL-1)%K exps/compute_canada_flpoison_*.sh
+The same experiment wrapper can be used locally or on Compute Canada.
+Local runs iterate `SLURM_ARRAY_TASK_ID` directly, while cluster runs submit the
+same wrapper through `sbatch`.
 
 Example:
-  python exps/local_run_array.py exps/compute_canada_flpoison_CIFAR10.sh
-  python exps/local_run_array.py exps/compute_canada_flpoison_CIFAR10.sh --ids 0-99
-  python exps/local_run_array.py exps/compute_canada_flpoison_CIFAR10.sh --resume
+  python exps/local_run_array.py exps/flpoison_CIFAR10.sh
+  python exps/local_run_array.py exps/flpoison_CIFAR10.sh --ids 0-99
+  python exps/local_run_array.py exps/flpoison_CIFAR10.sh --resume
 """
 
 from __future__ import annotations
@@ -299,7 +300,11 @@ def _worker_run_task(
 
 def main(argv: Sequence[str]) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("script", type=str, help="Path to exps/compute_canada_flpoison_*.sh")
+    ap.add_argument(
+        "script",
+        type=str,
+        help="Path to a shared experiment wrapper such as exps/flpoison_CIFAR10.sh",
+    )
     ap.add_argument(
         "--ids",
         type=str,

@@ -13,12 +13,5 @@
 
 set -euo pipefail
 
-submit_script="exps/compute_canada_flpoison_Tiny.sh"
-preset_name="tiny_imagenet"
-
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=/dev/null
-source "${script_dir}/compute_canada_flpoison_presets.sh"
-load_flpoison_preset "${preset_name}"
-# shellcheck source=/dev/null
-source "${script_dir}/compute_canada_flpoison_common.sh"
+exec bash "${script_dir}/flpoison_Tiny.sh" "$@"
