@@ -1,0 +1,21 @@
+# Globally available attacks.
+# Component-specific default parameters live in the attack implementations.
+attacks:
+  - attack: NoAttack
+  - attack: MinMax
+  - attack: MinSum
+  - attack: ALIE
+  - attack: FangAttack
+  - attack: IPM
+  - attack: SignFlipping
+  - attack: Gaussian
+  - attack: Mimic
+  - attack: ThreeDFed
+  - attack: BadNets
+  - attack: BadNets_image
+  - attack: EdgeCase
+  - attack: ModelReplacement
+  - attack: LabelFlipping
+  - attack: AlterMin
+  - attack: DBA
+  - attack: Neurotoxin

@@ -26,16 +26,20 @@ def dataset_catalog_path(root: Path | None = None) -> Path:
     return catalog_dir(root) / "datasets.yaml"
 
 
+def attacks_catalog_path(root: Path | None = None) -> Path:
+    return catalog_dir(root) / "attacks.yaml"
+
+
+def defenses_catalog_path(root: Path | None = None) -> Path:
+    return catalog_dir(root) / "defenses.yaml"
+
+
 def preset_path(algorithm: str, dataset: str, root: Path | None = None) -> Path:
     return presets_dir(root) / algorithm / f"{dataset}.yaml"
 
 
 def preset_relpath(algorithm: str, dataset: str) -> Path:
     return Path("configs") / "presets" / algorithm / f"{dataset}.yaml"
-
-
-def catalog_path(kind: str, name: str, root: Path | None = None) -> Path:
-    return catalog_dir(root) / kind / f"{name}.yaml"
 
 
 def list_preset_files(root: Path | None = None) -> list[Path]:
@@ -101,27 +105,23 @@ def load_experiment_config(path_like: str | Path, *, root: Path | None = None) -
     path = resolve_config_path(path_like, root=root)
     raw = load_yaml_mapping(path, root=root)
 
-    catalogs = raw.pop("catalogs", {}) or {}
-    if not isinstance(catalogs, dict):
-        raise ValueError(f"`catalogs` must be a mapping in {path}")
-
-    attack_catalog = raw.pop("attack_catalog", None) or catalogs.get("attacks")
-    defense_catalog = raw.pop("defense_catalog", None) or catalogs.get("defenses")
+    obsolete_fields = [key for key in ("catalogs", "attack_catalog", "defense_catalog") if key in raw]
+    if obsolete_fields:
+        raise ValueError(
+            f"obsolete config fields {obsolete_fields} found in {path}; "
+            "use the shared configs/catalog/attacks.yaml and configs/catalog/defenses.yaml files instead"
+        )
 
     if "attacks" not in raw:
-        if not attack_catalog:
-            raise ValueError(f"missing `attacks` or `catalogs.attacks` in {path}")
-        raw["attacks"] = load_catalog_entries("attacks", attack_catalog, root=root)
+        raw["attacks"] = load_catalog_entries("attacks", attacks_catalog_path(root), root=root)
     if "defenses" not in raw:
-        if not defense_catalog:
-            raise ValueError(f"missing `defenses` or `catalogs.defenses` in {path}")
-        raw["defenses"] = load_catalog_entries("defenses", defense_catalog, root=root)
+        raw["defenses"] = load_catalog_entries("defenses", defenses_catalog_path(root), root=root)
 
     return raw
 
 
-def load_catalog_entries(kind: str, name: str, *, root: Path | None = None) -> list[dict[str, Any]]:
-    path = catalog_path(kind, name, root=root)
+def load_catalog_entries(kind: str, path_like: str | Path, *, root: Path | None = None) -> list[dict[str, Any]]:
+    path = resolve_config_path(path_like, root=root)
     raw = load_yaml_mapping(path, root=root)
     entries = raw.get(kind)
     if not isinstance(entries, list):

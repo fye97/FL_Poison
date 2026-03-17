@@ -29,7 +29,3 @@ log_stream: true
 num_adv: 0.2
 attack: NoAttack
 defense: Mean
-
-catalogs:
-  attacks: vision
-  defenses: chmnist

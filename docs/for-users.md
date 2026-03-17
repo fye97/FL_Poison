@@ -125,7 +125,7 @@ We provide two types of configuration:
 
 `./configs/catalog/datasets.yaml` stores dataset metadata such as channels, class counts, normalization statistics, and feature dimensions.
 
-`./configs/presets/FedSGD/MNIST.yaml` is the canonical preset for the FedSGD algorithm on the MNIST dataset. You can modify parameters in this file and customize the attack or defense experiment parameters. Shared attack and defense registries are loaded from `configs/catalog/attacks/*.yaml` and `configs/catalog/defenses/*.yaml`.
+`./configs/presets/FedSGD/MNIST.yaml` is the canonical preset for the FedSGD algorithm on the MNIST dataset. You can modify parameters in this file and customize the training defaults. Shared attack and defense registries are loaded from `configs/catalog/attacks.yaml` and `configs/catalog/defenses.yaml`.
 
 ## HAR (UCI Human Activity Recognition)
 This repo includes a loader for the UCI HAR dataset (`dataset: HAR`) and a simple vector MLP (`model: mlp`).

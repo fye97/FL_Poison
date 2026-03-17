@@ -2,9 +2,12 @@ from aggregators import all_aggregators
 from attackers import data_poisoning_attacks, model_poisoning_attacks
 
 from config_utils import (
+    attacks_catalog_path,
+    defenses_catalog_path,
     list_preset_files,
     load_dataset_catalog,
     load_experiment_config,
+    load_yaml_mapping,
     preset_path,
     resolve_config_path,
     validate_experiment_config,
@@ -46,9 +49,13 @@ def test_all_presets_load_and_validate():
         )
 
 
-def test_har_preset_excludes_image_backdoor_attacks():
-    config = load_experiment_config(preset_path("FedAvg", "HAR"))
-    attack_names = {item["attack"] for item in config["attacks"]}
-    assert "BadNets" not in attack_names
-    assert "BadNets_image" not in attack_names
-    assert "DBA" not in attack_names
+def test_shared_attack_catalog_covers_registered_attacks():
+    payload = load_yaml_mapping(attacks_catalog_path())
+    attack_names = {item["attack"] for item in payload["attacks"]}
+    assert attack_names == KNOWN_ATTACKS
+
+
+def test_shared_defense_catalog_covers_registered_defenses():
+    payload = load_yaml_mapping(defenses_catalog_path())
+    defense_names = {item["defense"] for item in payload["defenses"]}
+    assert defense_names == set(all_aggregators)

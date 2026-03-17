@@ -1,0 +1,25 @@
+# Globally available defenses.
+# Component-specific default parameters live in the defense implementations.
+defenses:
+  - defense: RFA
+  - defense: FoolsGold
+  - defense: FLAME
+  - defense: DnC
+  - defense: LASA
+  - defense: Median
+  - defense: Auror
+  - defense: SimpleClustering
+  - defense: MultiKrum
+  - defense: TrimmedMean
+  - defense: NormClipping
+  - defense: TriGuardFL
+  - defense: Bucketing
+  - defense: FLDetector
+  - defense: SignGuard
+  - defense: CenteredClipping
+  - defense: DeepSight
+  - defense: Krum
+  - defense: Bulyan
+  - defense: Mean
+  - defense: CRFL
+  - defense: FLTrust

@@ -29,7 +29,3 @@ log_stream: true
 num_adv: 0.48
 attack: NoAttack
 defense: Mean
-
-catalogs:
-  attacks: mnist_fedopt
-  defenses: mnist_fedopt
