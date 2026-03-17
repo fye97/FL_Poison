@@ -62,7 +62,7 @@ def read_args():
     """
     1. parse command line arguments for configuration path and possible arguments.
     2. load the experiment preset from the provided YAML file, including shared attack/defense catalogs.
-    3. load dataset metadata from `configs/catalog/datasets.yaml`.
+    3. load dataset metadata from `configs/datasets.yaml`.
     4. override the preset with command line arguments if provided.
     return the `config` object with all configurations.
     """

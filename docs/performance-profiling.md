@@ -51,7 +51,7 @@ outline: deep
 
 ```bash
 python tests/perf/profile_single_run.py \
-  --config configs/presets/FedSGD/MNIST.yaml \
+  --config configs/FedSGD_MNIST_Lenet.yaml \
   --defense Mean \
   --epochs 20 \
   --num-clients 10 \
@@ -65,7 +65,7 @@ python tests/perf/profile_single_run.py \
 
 ```bash
 python tests/perf/profile_single_run.py \
-  --config configs/presets/FedSGD/MNIST.yaml \
+  --config configs/FedSGD_MNIST_Lenet.yaml \
   --defense Mean \
   --epochs 20 \
   --num-clients 10 \
@@ -80,7 +80,7 @@ python tests/perf/profile_single_run.py \
 
 ```bash
 python tests/perf/profile_single_run.py \
-  --config configs/presets/FedSGD/MNIST.yaml \
+  --config configs/FedSGD_MNIST_Lenet.yaml \
   --defense Mean \
   --epochs 20 \
   --num-clients 10 \
@@ -292,7 +292,7 @@ logs/torch_traces/perf_baseline/.../single_run_exp0/*.pt.trace.json
 
 ```bash
 python tests/perf/profile_single_run.py \
-  --config configs/presets/FedSGD/MNIST.yaml \
+  --config configs/FedSGD_MNIST_Lenet.yaml \
   --defense Mean \
   --epochs 20 \
   --num-clients 10 \
@@ -321,7 +321,7 @@ python tests/perf/profile_single_run.py \
 
 ```bash
 python tests/perf/profile_single_run.py \
-  --config configs/presets/FedSGD/MNIST.yaml \
+  --config configs/FedSGD_MNIST_Lenet.yaml \
   --defense Mean \
   --epochs 20 \
   --num-clients 10 \

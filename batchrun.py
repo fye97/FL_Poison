@@ -121,7 +121,7 @@ def main(args):
     tasks = []
     for algorithm in algorithms:
         for dataset, model in datasets_models:
-            config_file = preset_relpath(algorithm, dataset).as_posix()
+            config_file = preset_relpath(algorithm, dataset, model).as_posix()
             for distribution in distributions:
                 for attack in attacks:
                     for defense in defenses:
@@ -143,7 +143,7 @@ def main(args):
 
 
 def get_all_attacks_defenses():
-    args = vars(read_yaml(preset_relpath('FedSGD', 'MNIST').as_posix()))
+    args = vars(read_yaml(preset_relpath('FedSGD', 'MNIST', 'lenet').as_posix()))
     attacks = [attack_i['attack'] for attack_i in args['attacks']]
     defenses = [defense_j['defense'] for defense_j in args['defenses']]
     return attacks, defenses

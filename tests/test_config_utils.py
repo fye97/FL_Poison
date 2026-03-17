@@ -18,8 +18,8 @@ KNOWN_ATTACKS = {"NoAttack", *model_poisoning_attacks, *data_poisoning_attacks}
 
 
 def test_canonical_preset_path_resolves():
-    resolved = resolve_config_path("configs/presets/FedSGD/MNIST.yaml")
-    assert resolved == preset_path("FedSGD", "MNIST").resolve()
+    resolved = resolve_config_path("configs/FedSGD_MNIST_Lenet.yaml")
+    assert resolved == preset_path("FedSGD", "MNIST", "lenet").resolve()
 
 
 def test_legacy_aliases_are_rejected():

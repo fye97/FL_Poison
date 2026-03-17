@@ -5,6 +5,8 @@ from typing import Any, Iterable
 
 import yaml
 
+SHARED_CONFIG_FILENAMES = {"attacks.yaml", "defenses.yaml", "datasets.yaml"}
+
 
 def repo_root() -> Path:
     return Path(__file__).resolve().parent
@@ -14,36 +16,55 @@ def configs_dir(root: Path | None = None) -> Path:
     return (root or repo_root()) / "configs"
 
 
-def presets_dir(root: Path | None = None) -> Path:
-    return configs_dir(root) / "presets"
-
-
-def catalog_dir(root: Path | None = None) -> Path:
-    return configs_dir(root) / "catalog"
+def _shared_config_path(filename: str, root: Path | None = None) -> Path:
+    return configs_dir(root) / filename
 
 
 def dataset_catalog_path(root: Path | None = None) -> Path:
-    return catalog_dir(root) / "datasets.yaml"
+    return _shared_config_path("datasets.yaml", root)
 
 
 def attacks_catalog_path(root: Path | None = None) -> Path:
-    return catalog_dir(root) / "attacks.yaml"
+    return _shared_config_path("attacks.yaml", root)
 
 
 def defenses_catalog_path(root: Path | None = None) -> Path:
-    return catalog_dir(root) / "defenses.yaml"
+    return _shared_config_path("defenses.yaml", root)
 
 
-def preset_path(algorithm: str, dataset: str, root: Path | None = None) -> Path:
-    return presets_dir(root) / algorithm / f"{dataset}.yaml"
+def model_name_for_filename(model: str) -> str:
+    if not model:
+        raise ValueError("model is required for preset filenames")
+    return "".join(part[:1].upper() + part[1:] for part in model.replace("-", "_").split("_") if part)
 
 
-def preset_relpath(algorithm: str, dataset: str) -> Path:
-    return Path("configs") / "presets" / algorithm / f"{dataset}.yaml"
+def preset_filename(algorithm: str, dataset: str, model: str) -> str:
+    return f"{algorithm}_{dataset}_{model_name_for_filename(model)}.yaml"
+
+
+def preset_path(algorithm: str, dataset: str, model: str, root: Path | None = None) -> Path:
+    return configs_dir(root) / preset_filename(algorithm, dataset, model)
+
+
+def preset_relpath(
+    algorithm: str,
+    dataset: str,
+    model: str | None = None,
+    *,
+    root: Path | None = None,
+) -> Path:
+    if model is not None:
+        return Path("configs") / preset_filename(algorithm, dataset, model)
+    resolved = resolve_preset_for_scenario(algorithm, dataset, root=root, allow_fallback=False)
+    return resolved.relative_to((root or repo_root()).resolve())
 
 
 def list_preset_files(root: Path | None = None) -> list[Path]:
-    return sorted(p.resolve() for p in presets_dir(root).glob("*/*.yaml"))
+    return sorted(
+        p.resolve()
+        for p in configs_dir(root).glob("*.yaml")
+        if p.name not in SHARED_CONFIG_FILENAMES
+    )
 
 
 def resolve_config_path(path_like: str | Path, *, root: Path | None = None) -> Path:
@@ -67,9 +88,18 @@ def resolve_preset_for_scenario(
     allow_fallback: bool = True,
 ) -> Path:
     root = (root or repo_root()).resolve()
-    candidate = preset_path(algorithm, dataset, root=root)
-    if candidate.exists() or not allow_fallback:
-        return candidate.resolve()
+    matches = sorted(configs_dir(root).glob(f"{algorithm}_{dataset}_*.yaml"))
+    if len(matches) == 1:
+        return matches[0].resolve()
+    if len(matches) > 1:
+        raise ValueError(
+            f"multiple configs found for algorithm={algorithm} dataset={dataset}; "
+            "set scenario.config explicitly"
+        )
+    if not allow_fallback:
+        raise FileNotFoundError(
+            f"no usable config found for algorithm={algorithm} dataset={dataset}"
+        )
 
     fallback_datasets: list[str] = []
     if dataset in {"MNIST", "FashionMNIST", "EMNIST"}:
@@ -78,14 +108,22 @@ def resolve_preset_for_scenario(
         fallback_datasets.append("CIFAR10")
 
     for fallback_dataset in fallback_datasets:
-        fallback = preset_path(algorithm, fallback_dataset, root=root)
-        if fallback.exists():
-            return fallback.resolve()
+        fallback_matches = sorted(configs_dir(root).glob(f"{algorithm}_{fallback_dataset}_*.yaml"))
+        if len(fallback_matches) == 1:
+            return fallback_matches[0].resolve()
+        if len(fallback_matches) > 1:
+            raise ValueError(
+                f"multiple fallback configs found for algorithm={algorithm} dataset={fallback_dataset}; "
+                "set scenario.config explicitly"
+            )
 
-    algorithm_dir = presets_dir(root) / algorithm
-    for item in sorted(algorithm_dir.glob("*.yaml")):
-        if item.exists():
-            return item.resolve()
+    algorithm_matches = sorted(configs_dir(root).glob(f"{algorithm}_*.yaml"))
+    if len(algorithm_matches) == 1:
+        return algorithm_matches[0].resolve()
+    if len(algorithm_matches) > 1:
+        raise ValueError(
+            f"multiple configs found for algorithm={algorithm}; set scenario.config explicitly"
+        )
 
     raise FileNotFoundError(
         f"no usable config found for algorithm={algorithm} dataset={dataset}"
@@ -109,7 +147,7 @@ def load_experiment_config(path_like: str | Path, *, root: Path | None = None) -
     if obsolete_fields:
         raise ValueError(
             f"obsolete config fields {obsolete_fields} found in {path}; "
-            "use the shared configs/catalog/attacks.yaml and configs/catalog/defenses.yaml files instead"
+            "use the shared configs/attacks.yaml and configs/defenses.yaml files instead"
         )
 
     if "attacks" not in raw:

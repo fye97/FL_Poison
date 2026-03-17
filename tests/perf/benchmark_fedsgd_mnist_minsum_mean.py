@@ -3,7 +3,7 @@
 Benchmark the current workspace against the pre-optimization baseline tag.
 
 Default experiment:
-  python main.py --config=./configs/presets/FedSGD/MNIST.yaml --attack=MinSum --defense=Mean
+  python main.py --config=./configs/FedSGD_MNIST_Lenet.yaml --attack=MinSum --defense=Mean
 
 This script compares:
   - baseline: git tag/ref `v1.0.0`
@@ -80,7 +80,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--config",
-        default="configs/presets/FedSGD/MNIST.yaml",
+        default="configs/FedSGD_MNIST_Lenet.yaml",
         help="Repo-relative canonical config path used in both baseline and current runs.",
     )
     parser.add_argument("--attack", default="MinSum", help="Attack override.")

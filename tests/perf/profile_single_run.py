@@ -4,7 +4,7 @@ Run a single fixed-configuration profiling experiment and emit a concise baselin
 
 Example:
   python tests/perf/profile_single_run.py \
-    --config configs/presets/FedSGD/MNIST.yaml \
+    --config configs/FedSGD_MNIST_Lenet.yaml \
     --defense Mean \
     --epochs 20 \
     --num-clients 10 \

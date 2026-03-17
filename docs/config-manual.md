@@ -6,11 +6,11 @@ outline: deep
 
 # 配置手册
 
-本文档说明 `configs/` 目录下配置文件（`presets/{Algorithm}/{Dataset}.yaml` 与 `catalog/datasets.yaml`）中所有可用参数、选项与默认值来源。
+本文档说明 `configs/` 目录下配置文件（`{Algorithm}_{Dataset}_{Model}.yaml` 与 `datasets.yaml`）中所有可用参数、选项与默认值来源。
 
 适用范围：
-- 训练/实验配置文件：`configs/presets/FedSGD/MNIST.yaml` 等
-- 数据集配置文件：`configs/catalog/datasets.yaml`
+- 训练/实验配置文件：`configs/FedSGD_MNIST_Lenet.yaml` 等
+- 数据集配置文件：`configs/datasets.yaml`
 
 注意：
 - `main.py` 会先读取 YAML，再用命令行参数覆盖（见 `global_args.py`）。
@@ -18,7 +18,7 @@ outline: deep
 
 ---
 
-## 主配置文件（presets/{Algorithm}/{Dataset}.yaml）字段
+## 主配置文件（{Algorithm}_{Dataset}_{Model}.yaml）字段
 
 | 参数 | 类型/可选值 | 说明 |
 | --- | --- | --- |
@@ -289,7 +289,7 @@ defenses:
 
 ---
 
-**catalog/datasets.yaml 字段**
+**datasets.yaml 字段**
 
 该文件为每个数据集提供统计信息与维度配置，运行时会被 `single_preprocess` 加载并写入 `args`。
 
@@ -310,4 +310,4 @@ defenses:
 - `root`/`aug`/`partition_visualization` 当前未接入到实际流程，仅存在于配置文件中。
 - `lr_scheduler` 的内部超参固定在代码里：
 `StepLR(step_size=80, gamma=0.5)`，`ExponentialLR(gamma=0.99)`，`CosineAnnealingLR(T_max=epochs*local_epochs)`。
-- `configs/catalog/datasets.yaml` 中存在 `FEMNIST` 条目，但 `load_data` 尚未支持该数据集。
+- `configs/datasets.yaml` 中存在 `FEMNIST` 条目，但 `load_data` 尚未支持该数据集。

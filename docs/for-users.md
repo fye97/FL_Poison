@@ -52,12 +52,12 @@ sudo brew install unrar
 CPU-intensive, GPU memory-intensive, and FP32 operation-heavy hardware configurations are recommended for the benchmark experiment. A machine with 16+ CPU cores (for example, Intel Xeon Gold 6226R, Platinum 8352V, 8377C, AMD EPYC 7T83), 60GB+ memory, and GPUs with 24GB+ memory each with good FP32 performance (for example, NVIDIA 3090, A40, 4090, L20, L40s, L40) is ideal. These configurations ensure the experiment runs efficiently on a single machine.
 
 ## Simple Usage
-The `./configs` folder now separates runnable presets from shared catalogs. Experiment presets live under `configs/presets/<Algorithm>/<Dataset>.yaml`, while shared attack, defense, and dataset metadata live under `configs/catalog/`.
+The `./configs` folder is now flat. Shared attack, defense, and dataset metadata live in `configs/attacks.yaml`, `configs/defenses.yaml`, and `configs/datasets.yaml`. Runnable presets also live directly in `configs/`, with names like `FedSGD_MNIST_Lenet.yaml`.
 
 For example, to run FedSGD on MNIST with LeNet:
 
 ```bash
-python main.py -config=./configs/presets/FedSGD/MNIST.yaml
+python main.py -config=./configs/FedSGD_MNIST_Lenet.yaml
 ```
 
 ### Run A Specific Attack Or Defense
@@ -75,20 +75,20 @@ defense: Mean
 Then run:
 
 ```bash
-python main.py -config=./configs/presets/FedSGD/MNIST.yaml
+python main.py -config=./configs/FedSGD_MNIST_Lenet.yaml
 ```
 
 ### Override Parameters With Command Line Arguments
 You can override any parameter in the configuration file with command line arguments. For attack or defense parameters, you need to override the whole parameter object rather than part of it.
 
 ```bash
-python main.py -config=./configs/presets/FedSGD/MNIST.yaml -attack_params="{'scaling_factor': 0.5}"
+python main.py -config=./configs/FedSGD_MNIST_Lenet.yaml -attack_params="{'scaling_factor': 0.5}"
 ```
 
 If you only override `attack` or `defense` without overriding their parameters, the default parameters in the configuration file are used.
 
 ```bash
-python main.py -config=./configs/presets/FedSGD/MNIST.yaml -attack=MinSum
+python main.py -config=./configs/FedSGD_MNIST_Lenet.yaml -attack=MinSum
 ```
 
 You can also override other parameters with `-model`, `-data`, `-num_clients`, `-num_adv`, `-bs`, `-lr`, `lr_scheduler`, and so on.
@@ -97,7 +97,7 @@ You can also override other parameters with `-model`, `-data`, `-num_clients`, `
 To run the benchmark experiment with one thread and process, use `-b`:
 
 ```bash
-python main.py -config=./configs/presets/FedSGD/MNIST.yaml -b=True
+python main.py -config=./configs/FedSGD_MNIST_Lenet.yaml -b=True
 ```
 
 To run multiple experiments in parallel, use `batchrun.py`. For example:
@@ -106,7 +106,7 @@ To run multiple experiments in parallel, use `batchrun.py`. For example:
 python batchrun.py -algorithms FedSGD -data MNIST -model lenet -distributions non-iid -attacks MinMax MinSum -defenses Krum Median -gidx 1 -maxp 3
 ```
 
-The above command trains LeNet-5 on MNIST with non-IID data partition on the FedSGD algorithm, and iteratively runs MinMax and MinSum with Krum and Median (4 experiments in total), using GPU index 1 with 3 parallel processes. It uses the default training, attack, and defense settings in the corresponding preset file `configs/presets/{FL algorithm}/{dataset}.yaml`.
+The above command trains LeNet-5 on MNIST with non-IID data partition on the FedSGD algorithm, and iteratively runs MinMax and MinSum with Krum and Median (4 experiments in total), using GPU index 1 with 3 parallel processes. It uses the default training, attack, and defense settings in the corresponding preset file `configs/{FL algorithm}_{dataset}_{model}.yaml`.
 
 ## Parameters Setting
 Two parameter passing methods are supported: command line options and configuration files.
@@ -120,12 +120,12 @@ There are two uses for command line options. You can use them to run the program
 YAML is used for parameter storage. The parameters should be stored in the `configs` folder as `.yaml` files.
 
 We provide two types of configuration:
-1. Dataset configuration: `configs/catalog/datasets.yaml`
-2. Experiment configuration: `configs/presets/{FL algorithm}/{dataset}.yaml`
+1. Shared configuration: `configs/attacks.yaml`, `configs/defenses.yaml`, `configs/datasets.yaml`
+2. Experiment configuration: `configs/{FL algorithm}_{dataset}_{model}.yaml`
 
-`./configs/catalog/datasets.yaml` stores dataset metadata such as channels, class counts, normalization statistics, and feature dimensions.
+`./configs/datasets.yaml` stores dataset metadata such as channels, class counts, normalization statistics, and feature dimensions.
 
-`./configs/presets/FedSGD/MNIST.yaml` is the canonical preset for the FedSGD algorithm on the MNIST dataset. You can modify parameters in this file and customize the training defaults. Shared attack and defense registries are loaded from `configs/catalog/attacks.yaml` and `configs/catalog/defenses.yaml`.
+`./configs/FedSGD_MNIST_Lenet.yaml` is the canonical preset for the FedSGD algorithm on the MNIST dataset with the default LeNet model. You can modify parameters in this file and customize the training defaults. Shared attack and defense registries are loaded from `configs/attacks.yaml` and `configs/defenses.yaml`.
 
 ## HAR (UCI Human Activity Recognition)
 This repo includes a loader for the UCI HAR dataset (`dataset: HAR`) and a simple vector MLP (`model: mlp`).
@@ -137,7 +137,7 @@ This repo includes a loader for the UCI HAR dataset (`dataset: HAR`) and a simpl
 2) Run the example config:
 
 ```bash
-python main.py -config=./configs/presets/FedAvg/HAR.yaml
+python main.py -config=./configs/FedAvg_HAR_Fcn.yaml
 ```
 
 ## Key Points When Using FLPoison

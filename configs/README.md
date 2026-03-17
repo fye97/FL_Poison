@@ -1,7 +1,7 @@
 # Configs
 
-`configs/` now separates three responsibilities:
+`configs/` is now flat:
 
-- `presets/`: runnable experiment defaults for a specific algorithm + dataset pair.
-- `catalog/attacks.yaml` and `catalog/defenses.yaml`: shared global attack/defense registries reused by presets.
-- `catalog/datasets.yaml`: dataset metadata consumed during preprocessing.
+- `attacks.yaml` and `defenses.yaml`: shared global attack/defense registries.
+- `datasets.yaml`: dataset metadata consumed during preprocessing.
+- `FedAvg_CIFAR10_Resnet18.yaml`-style files: runnable experiment presets whose names encode algorithm, dataset, and default model.
