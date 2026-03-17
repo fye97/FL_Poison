@@ -135,6 +135,10 @@ train_acc=0.23125 val_acc=0.2562
 - `train_acc`: 最后一轮训练精度
 - `val_acc`: 最后一次评估的 `Test Acc`
 
+补充说明：
+- `train_metrics` 来自训练过程中的在线统计，不会为了记录它再完整跑一遍 train set。
+- `test_metrics` 只会在命中评估调度的 round 填充；非评估轮为空对象。
+
 ### 4.2 Round summary
 
 训练日志里每轮都会输出：
@@ -203,12 +207,14 @@ val accuracy: 0.2562
 建议至少保留两种 baseline：
 
 1. 端到端 baseline
-- 默认 `eval_interval=1`
+- 默认 `eval_interval=5`
 - 适合看完整训练轮的真实业务耗时
 
 2. 训练吞吐 baseline
 - 例如 `--eval_interval 20`
 - 适合看训练主路径，不让评估淹没训练优化效果
+
+如果你需要旧的“每轮都评估”行为，显式传 `--eval_interval 1`。
 
 ### 5.2 如何看 `gpu_compute_ratio`
 
@@ -261,6 +267,10 @@ logs/torch_traces/perf_baseline/.../single_run_exp0/*.pt.trace.json
 ---
 
 ## 7. 2026-03-16 基线实验记录
+
+说明：
+- 以下数值是当日实现下的历史记录。
+- 当前代码的默认评估调度已经调整为“每 `5` 轮一次，最后一轮强制评估”，因此 round 级触发点和平均耗时会与下面记录不同。
 
 ### 7.1 基线 A：默认按最后输出的配置跑
 

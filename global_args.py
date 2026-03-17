@@ -2,6 +2,7 @@ import os
 import sys
 import torch
 import yaml
+from eval_schedule import DEFAULT_EVAL_INTERVAL
 from aggregators import all_aggregators
 from attackers import data_poisoning_attacks, model_poisoning_attacks
 from fl.models import all_models
@@ -265,7 +266,7 @@ def single_preprocess(args):
     if not hasattr(args, 'eval_batch_size') or args.eval_batch_size is None:
         args.eval_batch_size = args.batch_size
     if not hasattr(args, 'eval_interval') or args.eval_interval is None:
-        args.eval_interval = 1
+        args.eval_interval = DEFAULT_EVAL_INTERVAL
     if not hasattr(args, 'record_time') or args.record_time is None:
         args.record_time = False
     if not hasattr(args, 'torch_profile') or args.torch_profile is None:

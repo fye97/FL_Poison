@@ -5,6 +5,7 @@ import re
 import time
 from pathlib import Path
 from tqdm import tqdm
+from eval_schedule import should_run_evaluation
 from fl import coordinator
 from global_args import benchmark_preprocess, read_args, override_args, single_preprocess
 from global_utils import avg_value, print_filtered_args, setup_logger, setup_seed
@@ -76,6 +77,10 @@ def fl_run(args):
     coordinator.set_fl_algorithm(args, the_server, clients)
     args.logger.info("Clients and server are initialized")
     args.logger.info("Starting Training...")
+    args.logger.info(
+        "Evaluation schedule | interval=%d rounds | final_round_always_eval=True",
+        max(1, int(args.eval_interval)),
+    )
     torch_profiler = None
     with create_torch_profiler(args, args.output) as torch_profiler:
         for global_epoch in tqdm(range(args.epochs), desc="Global Epochs", dynamic_ncols=True):
@@ -110,10 +115,10 @@ def fl_run(args):
             the_server.update_global()
 
             # evalute the attack success rate (ASR) when a backdoor attack is launched
-            should_eval = (
-                global_epoch == 0
-                or global_epoch == args.epochs - 1
-                or (global_epoch + 1) % max(1, int(args.eval_interval)) == 0
+            should_eval = should_run_evaluation(
+                global_epoch=global_epoch,
+                total_epochs=args.epochs,
+                eval_interval=args.eval_interval,
             )
             test_stats = {}
             eval_start = time.perf_counter()
