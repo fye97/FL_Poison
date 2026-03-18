@@ -17,7 +17,8 @@ All notable repository-level changes are documented here.
   - `flpoison/cli` for command-line parsing and batch launchers
   - `flpoison/utils` for config, logging, plotting, and performance helpers
   - `flpoison/aggregators`, `flpoison/attackers`, and `flpoison/datapreprocessor` as domain packages
-- Kept the root [`main.py`](main.py) and [`batchrun.py`](batchrun.py) files as thin compatibility wrappers.
+- Removed the redundant root `main.py` and `batchrun.py` wrappers.
+- Standardized runtime entrypoints on `python -m flpoison`, installed console scripts, and the `exps/` launchers.
 - Refreshed the README to document installation, package layout, and the new entrypoints.
 - Updated packaging metadata so setuptools discovers `flpoison*` packages cleanly.
 
@@ -32,6 +33,4 @@ All notable repository-level changes are documented here.
 ### Validation
 
 - `pytest -q tests` passed (`25 passed`)
-- `python main.py --help` passed
-- `python batchrun.py --help` passed
 - `python -m flpoison --help` passed

@@ -3,7 +3,7 @@
 Benchmark the current workspace against the pre-optimization baseline tag.
 
 Default experiment:
-  python main.py --config=./configs/FedSGD_MNIST_Lenet.yaml --attack=MinSum --defense=Mean
+  python -m flpoison --config=./configs/FedSGD_MNIST_Lenet.yaml --attack=MinSum --defense=Mean
 
 This script compares:
   - baseline: git tag/ref `v1.0.0`
@@ -105,7 +105,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--extra-cli-args",
         default="",
-        help="Extra CLI overrides appended to each main.py invocation.",
+        help="Extra CLI overrides appended to each training entrypoint invocation.",
     )
     parser.add_argument(
         "--no-record-time",
@@ -275,7 +275,8 @@ def run_variant(
 
     cmd = [
         str(python_bin),
-        "main.py",
+        "-m",
+        "flpoison",
         f"--config={config_path}",
         f"--attack={attack}",
         f"--defense={defense}",
@@ -426,7 +427,7 @@ def build_summary_markdown(
     lines.append(f"- Output root: `{output_root}`")
     lines.append(f"- Baseline ref: `{args.baseline_ref}` ({baseline_commit[:7]})")
     lines.append(f"- Current commit: `{current_commit[:7]}`")
-    lines.append(f"- Command: `python main.py --config=./{args.config} --attack={args.attack} --defense={args.defense}`")
+    lines.append(f"- Command: `python -m flpoison --config=./{args.config} --attack={args.attack} --defense={args.defense}`")
     if args.extra_cli_args:
         lines.append(f"- Extra CLI args: `{args.extra_cli_args}`")
     lines.append("")

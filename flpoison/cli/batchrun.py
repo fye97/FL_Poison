@@ -129,7 +129,7 @@ def main(args):
                         num_clients, epoch, learning_rate = get_configs(
                             dataset, algorithm, distribution, defense)
 
-                        command = f'python -u main.py -config=./{config_file} -data {dataset} -model {model} -e {epoch} -att {attack} -def {defense} -dtb {distribution} -alg {algorithm} -lr {learning_rate} -gidx {gpu_idx}'
+                        command = f'python -u -m flpoison -config=./{config_file} -data {dataset} -model {model} -e {epoch} -att {attack} -def {defense} -dtb {distribution} -alg {algorithm} -lr {learning_rate} -gidx {gpu_idx}'
                         file_name = f'{repo_dir}/logs/{algorithm}/{dataset}_{model}/{distribution}/{dataset}_{model}_{distribution}_{attack}_{defense}_{epoch}_{num_clients}_{learning_rate}_{algorithm}.txt'
 
                         # Add the task to the list

@@ -5,7 +5,7 @@
 ![Last Commit](https://img.shields.io/github/last-commit/fye97/FL_Poison)
 [![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html)
 
-FLPoison is a PyTorch-based federated learning poisoning framework for benchmarking attacks, defenses, and training setups across multiple datasets and FL algorithms. The codebase is now organized as a proper Python package under [`flpoison/`](flpoison), while keeping the root `main.py` and `batchrun.py` entrypoints for compatibility with existing workflows.
+FLPoison is a PyTorch-based federated learning poisoning framework for benchmarking attacks, defenses, and training setups across multiple datasets and FL algorithms. The codebase is organized as a Python package under [`flpoison/`](flpoison), and the canonical training entrypoint is `python -m flpoison`.
 
 ## Quick Start
 
@@ -18,12 +18,6 @@ pip install -e .
 ```
 
 Run a single experiment:
-
-```bash
-python main.py --config configs/FedSGD_MNIST_Lenet.yaml
-```
-
-Or use the package entrypoint directly:
 
 ```bash
 python -m flpoison --config configs/FedSGD_MNIST_Lenet.yaml

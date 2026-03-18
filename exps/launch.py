@@ -789,7 +789,8 @@ def task_command(
     cmd = [
         python_bin,
         "-u",
-        "main.py",
+        "-m",
+        "flpoison",
         f"-config={config_path}",
         "-alg",
         task.algorithm,

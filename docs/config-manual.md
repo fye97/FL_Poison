@@ -13,7 +13,7 @@ outline: deep
 - 数据集配置文件：`configs/presets/datasets.yaml`
 
 注意：
-- `main.py` 会先读取 YAML，再用命令行参数覆盖（CLI 解析见 `flpoison/cli/args.py`，运行时归一化见 `flpoison/fl/configuration.py`）。
+- `python -m flpoison` 会先读取 YAML，再用命令行参数覆盖（CLI 解析见 `flpoison/cli/args.py`，运行时归一化见 `flpoison/fl/configuration.py`）。
 - `attack_params` 与 `defense_params` 若未显式给出，会先从 `attacks` / `defenses` 列表里匹配当前 `attack` / `defense` 填充默认值；若未命中，则回退到对应实现类里的 `default_attack_params` / `default_defense_params`。
 
 ---

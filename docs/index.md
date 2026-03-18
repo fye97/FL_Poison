@@ -47,7 +47,7 @@ npm run docs:dev
 ## 一条最短运行命令
 
 ```bash
-python main.py -config=./configs/FedSGD_MNIST_Lenet.yaml
+python -m flpoison --config ./configs/FedSGD_MNIST_Lenet.yaml
 ```
 
 ## 框架逻辑

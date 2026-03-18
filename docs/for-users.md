@@ -12,7 +12,7 @@ outline: [2, 3]
 2. 在本地机器上批量运行实验矩阵
 3. 在 Compute Canada 的 Slurm 机器上批量提交实验
 
-当前仓库里仍保留了根目录的 `batchrun.py` 作为兼容入口，但新的批量实验流程推荐统一使用 `exps/` 目录下的 spec 驱动脚本。
+批量实验流程统一推荐使用 `exps/` 目录下的 spec 驱动脚本。
 
 ## 环境准备
 
@@ -60,26 +60,24 @@ brew install unrar
 - `configs/FedAvg_CIFAR10_Resnet18.yaml`
 - `configs/FedAvg_HAR_Fcn.yaml`
 
-### 最短运行命令
-
-```bash
-python main.py --config configs/FedSGD_MNIST_Lenet.yaml
-```
-
-等价写法：
-
 ```bash
 python -m flpoison --config configs/FedSGD_MNIST_Lenet.yaml
 ```
 
 这会读取 YAML 配置，完成数据集加载、客户端划分、训练、评估和日志输出。
 
+如果你已经把项目安装进当前虚拟环境，也可以直接用 console script：
+
+```bash
+flpoison --config configs/FedSGD_MNIST_Lenet.yaml
+```
+
 ### 命令行覆盖配置
 
 你可以在 YAML 的基础上，通过命令行覆盖常用参数，例如训练轮数、攻击、防御、学习率、客户端数量等：
 
 ```bash
-python main.py \
+python -m flpoison \
   --config configs/FedSGD_MNIST_Lenet.yaml \
   --epochs 10 \
   --attack MinSum \
@@ -91,7 +89,7 @@ python main.py \
 也可以直接切换数据划分、模型或随机种子：
 
 ```bash
-python main.py \
+python -m flpoison \
   --config configs/FedSGD_MNIST_Lenet.yaml \
   --distribution non-iid \
   --dirichlet_alpha 0.1 \
@@ -102,7 +100,7 @@ python main.py \
 如果要覆盖攻击或防御的参数对象，需要整体传入该参数对象，而不是只改其中一个字段：
 
 ```bash
-python main.py \
+python -m flpoison \
   --config configs/FedSGD_MNIST_Lenet.yaml \
   --attack IPM \
   --attack_params "{'scaling_factor': 0.5}"
@@ -127,7 +125,7 @@ python main.py \
 你也可以自己指定输出文件：
 
 ```bash
-python main.py \
+python -m flpoison \
   --config configs/FedSGD_MNIST_Lenet.yaml \
   --output logs/manual_runs/mnist_smoke.txt
 ```
@@ -137,7 +135,7 @@ python main.py \
 单次入口本身也支持重复实验：
 
 ```bash
-python main.py \
+python -m flpoison \
   --config configs/FedSGD_MNIST_Lenet.yaml \
   --num_experiments 3 \
   --experiment_id 0
@@ -147,7 +145,7 @@ python main.py \
 
 ### 什么时候用单次入口
 
-下面这些情况适合直接用 `main.py`：
+下面这些情况适合直接用单次训练入口 `python -m flpoison`：
 
 - 你只想跑一个配置文件
 - 你正在调试某个 attack / defense / dataset 组合
@@ -395,24 +393,6 @@ Slurm 的 stdout / stderr 默认写到仓库里的：
 - `RESULT_ROOT`: 覆盖结果输出根目录
 
 这几个变量对本地批量和 Compute Canada 批量流程都生效。
-
-## 兼容旧批量入口
-
-根目录的 `batchrun.py` 仍可用，但它属于旧式批量脚本，更适合兼容已有命令而不是组织新实验。新的实验矩阵、任务拆分、`plan` 预览和 Slurm 提交流程，建议统一使用 `exps/` 下的 spec 驱动入口。
-
-如果你只是想快速看一个旧命令长什么样，示例如下：
-
-```bash
-python batchrun.py \
-  --algorithms FedSGD \
-  --dataset MNIST \
-  --model lenet \
-  --distributions non-iid \
-  --attacks MinMax MinSum \
-  --defenses Krum Median \
-  --gpu_idx 1 \
-  --max_processes 3
-```
 
 ## 进一步阅读
 

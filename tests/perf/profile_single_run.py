@@ -78,7 +78,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--extra-cli-args",
         default="",
-        help="Extra CLI args appended to the main.py invocation.",
+        help="Extra CLI args appended to the training entrypoint invocation.",
     )
     parser.add_argument(
         "--output-root",
@@ -208,7 +208,7 @@ def main() -> int:
     python_bin = resolve_python_bin(root, args.python_bin)
     profile_config, output_path = build_profile_config(args, source_config, output_root)
 
-    cmd = [str(python_bin), "main.py", f"--config={profile_config}"]
+    cmd = [str(python_bin), "-m", "flpoison", f"--config={profile_config}"]
     if args.attack:
         cmd.append(f"--attack={args.attack}")
     if args.defense:
