@@ -9,6 +9,7 @@ description: FedAvg omnibus benchmark across CIFAR10, CIFAR100, and TinyImageNet
 scenarios:
   - algorithm: FedAvg
     dataset: CIFAR10
+    config: configs/FedAvg_CIFAR10_vgg19.yaml
   - algorithm: FedAvg
     dataset: CIFAR100
   - algorithm: FedAvg

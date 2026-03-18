@@ -13,7 +13,7 @@ batch_size: 64
 learning_rate: 0.05
 local_epochs: 4
 
-model: resnet18
+model: vgg19
 dataset: CIFAR10
 distribution: iid
 im_iid_gamma: 0.01

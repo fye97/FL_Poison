@@ -57,7 +57,7 @@ brew install unrar
 例如：
 
 - `configs/FedSGD_MNIST_Lenet.yaml`
-- `configs/FedAvg_CIFAR10_Resnet18.yaml`
+- `configs/FedAvg_CIFAR10_vgg19.yaml`
 - `configs/FedAvg_HAR_Fcn.yaml`
 
 ```bash

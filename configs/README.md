@@ -4,4 +4,4 @@
 
 - `presets/attacks.yaml` and `presets/defenses.yaml`: shared global attack/defense registries.
 - `presets/datasets.yaml`: dataset metadata consumed during preprocessing.
-- `FedAvg_CIFAR10_Resnet18.yaml`-style files: runnable experiment presets whose names encode algorithm, dataset, and default model.
+- `FedAvg_CIFAR10_vgg19.yaml`-style files: runnable experiment presets whose names encode algorithm, dataset, and default model.

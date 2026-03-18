@@ -4,6 +4,7 @@ description: FedAvg poisoning benchmark on CIFAR10.
 scenarios:
   - algorithm: FedAvg
     dataset: CIFAR10
+    config: configs/FedAvg_CIFAR10_vgg19.yaml
 
 matrix:
   distributions:
