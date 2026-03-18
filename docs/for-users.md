@@ -54,6 +54,8 @@ brew install unrar
 - `configs/*.yaml` 是可直接运行的实验 preset
 - `configs/presets/attacks.yaml`、`configs/presets/defenses.yaml`、`configs/presets/datasets.yaml` 存放共享元数据
 
+如果你要确认某个字段到底写在哪里、默认值来自哪里、哪些攻击或防御参数可以配置，不要在这份用户手册里猜，直接看 [配置手册](/config-manual)。
+
 例如：
 
 - `configs/FedSGD_MNIST_Lenet.yaml`
@@ -105,7 +107,7 @@ python -m flpoison \
   --no-log_color
 ```
 
-如果要覆盖攻击或防御的参数对象，需要整体传入该参数对象，而不是只改其中一个字段：
+如果要覆盖攻击或防御的参数对象，需要传一个 Python 字典字符串。你可以只传想改的字段，未传的字段仍然会回退到共享 preset 或实现默认值：
 
 ```bash
 python -m flpoison \
@@ -114,7 +116,16 @@ python -m flpoison \
   --attack_params "{'scaling_factor': 0.5}"
 ```
 
-如果你只覆盖 `--attack` 或 `--defense`，但没有额外提供 `--attack_params` 或 `--defense_params`，运行时会优先从共享 preset 里查找对应默认参数；找不到时回退到实现内部默认值。
+同理，防御参数也可以只改局部字段：
+
+```bash
+python -m flpoison \
+  --config configs/FedSGD_MNIST_Lenet.yaml \
+  --defense TrimmedMean \
+  --defense_params "{'beta': 0.2}"
+```
+
+如果你只覆盖 `--attack` 或 `--defense`，但没有额外提供 `--attack_params` 或 `--defense_params`，运行时会优先从共享 preset 里查找对应默认参数；找不到时回退到实现内部默认值。字段全集和覆盖规则见 [配置手册](/config-manual)。
 
 ### 输出文件在哪里
 
@@ -138,6 +149,8 @@ python -m flpoison \
   --output logs/manual_runs/mnist_smoke.txt
 ```
 
+默认命名规则、`exp{}` / `seed{}` 的改写逻辑，以及重复实验时如何避免覆盖，见 [配置手册](/config-manual)。
+
 ### 重复运行多个 seed
 
 单次入口本身也支持重复实验：
@@ -159,7 +172,7 @@ python -m flpoison \
 - 你正在调试某个 attack / defense / dataset 组合
 - 你想先确认配置本身能否正常训练，再扩展成批量实验
 
-完整参数说明见 [配置手册](/config-manual)。
+这份用户手册只保留运行入口和常用命令；完整字段说明、默认值来源、攻击/防御参数字典都集中在 [配置手册](/config-manual)。
 
 ## 批量运行总览
 
@@ -257,7 +270,7 @@ slurm:
 - `runtime`: 本地或 worker 运行时设置，例如 `gpu_idx`、`num_workers`、是否强制 CUDA
 - `slurm`: 只有走 Slurm 提交时才会用到的资源申请参数
 
-如果某个 `matrix` 字段省略，launcher 会回退到对应 config 文件里的默认值。
+如果某个 `matrix` 字段省略，launcher 会回退到对应 config 文件里的默认值。这里的 base config 仍然是 `configs/*.yaml`，其字段定义和默认值来源见 [配置手册](/config-manual)。
 
 ## 本地批量运行
 
