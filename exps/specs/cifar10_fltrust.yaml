@@ -41,8 +41,8 @@ slurm:
   cpus_per_task: 8
   mem: 64G
   requeue: true
-  output: /home/%u/FL_Poison/logs/slurm/%x_%A_%a.out
-  error: /home/%u/FL_Poison/logs/slurm/%x_%A_%a.err
+  output: logs/slurm/%x_%A_%a.out
+  error: logs/slurm/%x_%A_%a.err
   mail_user: fengye@uvic.ca
   mail_type: ALL
   array_parallel: 3

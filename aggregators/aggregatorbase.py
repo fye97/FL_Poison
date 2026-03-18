@@ -7,6 +7,7 @@ class AggregatorBase():
     """
 
     supports_torch_updates = False
+    accepts_unstacked_torch_updates = False
 
     def __init__(self, args, **kwargs):
         self.args = args

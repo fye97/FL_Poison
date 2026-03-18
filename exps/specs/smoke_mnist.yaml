@@ -1,0 +1,45 @@
+name: smoke_mnist
+description: Small FedAvg MNIST smoke test for validating the exps launcher locally or on Compute Canada.
+
+scenarios:
+  - algorithm: FedAvg
+    dataset: MNIST
+    config: configs/FedAvg_MNIST_Lenet.yaml
+
+matrix:
+  distributions:
+    - type: iid
+  num_advs:
+    - 0
+  models:
+    - lenet
+  epochs:
+    - 1
+  num_clients:
+    - 10
+  learning_rates:
+    - 0.01
+  seeds:
+    - 42
+  attacks:
+    - NoAttack
+  defenses:
+    - Mean
+
+repeats:
+  count: 1
+  start: 0
+
+runtime:
+  gpu_idx: 0
+
+slurm:
+  account: def-lincai
+  time: 0-00:30:00
+  gpus: nvidia_h100_80gb_hbm3_1g.10gb:1
+  cpus_per_task: 4
+  mem: 16G
+  requeue: true
+  output: logs/slurm/%x_%A_%a.out
+  error: logs/slurm/%x_%A_%a.err
+  array_parallel: 1

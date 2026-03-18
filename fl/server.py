@@ -92,7 +92,10 @@ class Server(Worker):
                     raise ValueError(
                         f"Inconsistent update size: client {idx} has {arr.numel()}, expected {num_params}")
                 tensors.append(arr)
-            stacked = torch.stack(tensors, dim=0)
+            if getattr(getattr(self, "aggregator", None), "accepts_unstacked_torch_updates", False):
+                stacked = tuple(tensors)
+            else:
+                stacked = torch.stack(tensors, dim=0)
         else:
             first = self._coerce_update_array(updates[0])
             num_clients = len(updates)

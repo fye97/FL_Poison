@@ -113,3 +113,23 @@ def test_server_collect_updates_stacks_torch_updates_and_converts_numpy():
         server.client_updates,
         torch.tensor([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=torch.float32),
     )
+
+
+def test_server_collect_updates_keeps_mean_updates_unstacked_to_avoid_extra_gpu_peak():
+    server = Server.__new__(Server)
+    server.runtime_profiler = None
+    server.use_torch_updates = True
+    server.aggregator = Mean(SimpleNamespace())
+    server.global_weights_vec = torch.zeros(3, dtype=torch.float32)
+    server.clients = [
+        SimpleNamespace(update=torch.tensor([1.0, 2.0, 3.0], dtype=torch.float32)),
+        SimpleNamespace(update=np.array([4.0, 5.0, 6.0], dtype=np.float32)),
+    ]
+
+    Server.collect_updates(server, global_epoch=0)
+
+    assert isinstance(server.client_updates, tuple)
+    assert len(server.client_updates) == 2
+    assert all(torch.is_tensor(update) for update in server.client_updates)
+    aggregated = server.aggregator.aggregate(server.client_updates)
+    assert torch.allclose(aggregated, torch.tensor([2.5, 3.5, 4.5], dtype=torch.float32))

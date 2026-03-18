@@ -19,6 +19,10 @@ from typing import Any, Iterable, List, Optional, Sequence, Tuple
 
 import yaml
 
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 from config_utils import preset_relpath, resolve_config_path, resolve_preset_for_scenario
 
 
@@ -40,8 +44,8 @@ CONFIG_DEFAULT_FIELDS = (
 
 DEFAULT_LOCAL_LOG_DIR = "logs/local_array"
 DEFAULT_LOCAL_RESULT_ROOT = "logs/local_runs"
-DEFAULT_SLURM_OUTPUT = "/home/%u/FL_Poison/logs/slurm/%x_%A_%a.out"
-DEFAULT_SLURM_ERROR = "/home/%u/FL_Poison/logs/slurm/%x_%A_%a.err"
+DEFAULT_SLURM_OUTPUT = "logs/slurm/%x_%A_%a.out"
+DEFAULT_SLURM_ERROR = "logs/slurm/%x_%A_%a.err"
 
 
 @dataclass(frozen=True)
@@ -62,6 +66,7 @@ class DistributionChoice:
 class RuntimeSpec:
     gpu_idx: int = 0
     num_workers: Optional[int] = None
+    require_cuda: Optional[bool] = None
     cuda_retry_max: int = 3
     cuda_retry_sleep: int = 20
     cuda_requeue_on_fail: bool = True
@@ -190,6 +195,12 @@ def parse_bool(value: Any, *, default: bool) -> bool:
     raise ValueError(f"invalid boolean value: {value}")
 
 
+def parse_optional_bool(value: Any) -> Optional[bool]:
+    if value in (None, ""):
+        return None
+    return parse_bool(value, default=False)
+
+
 def parse_non_negative_int(value: Any, *, field_name: str) -> int:
     try:
         out = int(value)
@@ -313,6 +324,7 @@ def load_spec(spec_identifier: str) -> ExperimentSpec:
                 None if runtime_raw.get("num_workers") in (None, "")
                 else parse_positive_int(runtime_raw.get("num_workers"), field_name="runtime.num_workers")
             ),
+            require_cuda=parse_optional_bool(runtime_raw.get("require_cuda")),
             cuda_retry_max=parse_positive_int(runtime_raw.get("cuda_retry_max", 3), field_name="runtime.cuda_retry_max"),
             cuda_retry_sleep=parse_positive_int(runtime_raw.get("cuda_retry_sleep", 20), field_name="runtime.cuda_retry_sleep"),
             cuda_requeue_on_fail=parse_bool(runtime_raw.get("cuda_requeue_on_fail", True), default=True),
@@ -477,6 +489,12 @@ def runtime_platform() -> str:
     return "local"
 
 
+def should_require_cuda(runtime: RuntimeSpec, platform: str) -> bool:
+    if runtime.require_cuda is not None:
+        return runtime.require_cuda
+    return platform == "compute_canada"
+
+
 def resolve_python_bin(root: Path) -> str:
     override = os.environ.get("PYTHON_BIN")
     if override:
@@ -533,6 +551,16 @@ def result_root_for_platform(root: Path, platform: str) -> Path:
     if scratch:
         return (Path(scratch) / "FL_Poison" / "logs").resolve()
     return (Path.home() / "scratch" / "FL_Poison" / "logs").resolve()
+
+
+def resolve_slurm_path(path_text: str, root: Path) -> str:
+    text = normalize_text(path_text).strip()
+    if not text:
+        return ""
+    candidate = Path(text).expanduser()
+    if candidate.is_absolute():
+        return str(candidate)
+    return str((root / candidate).resolve())
 
 
 def log_dir_for_task(result_root: Path, task: ExperimentTask) -> Path:
@@ -896,15 +924,19 @@ def worker_main(args: argparse.Namespace) -> int:
     print(f"  experiment_id={task.experiment_id}")
     print(f"  attack={task.attack} defense={task.defense}")
 
-    if not check_cuda(
+    cuda_ok = check_cuda(
         python_bin,
         retry_max=spec.runtime.cuda_retry_max,
         retry_sleep=spec.runtime.cuda_retry_sleep,
-    ):
-        if maybe_requeue_for_cuda_failure(spec.runtime):
-            return 0
-        print("ERROR: CUDA still unavailable; aborting to avoid silent CPU fallback.", file=sys.stderr)
-        return 1
+    )
+    require_cuda = should_require_cuda(spec.runtime, platform)
+    if not cuda_ok:
+        if require_cuda:
+            if maybe_requeue_for_cuda_failure(spec.runtime):
+                return 0
+            print("ERROR: CUDA still unavailable; aborting to avoid silent CPU fallback.", file=sys.stderr)
+            return 1
+        print("WARN: CUDA unavailable; continuing with local CPU/MPS fallback.", file=sys.stderr)
 
     write_metadata(
         metadata_file,
@@ -924,6 +956,8 @@ def worker_main(args: argparse.Namespace) -> int:
             ("output_file", str(final_output_file)),
             ("runtime_output_file", str(runtime_output_file)),
             ("config_file", str(config_path)),
+            ("cuda_required", str(require_cuda)),
+            ("cuda_probe_ok", str(cuda_ok)),
             ("experiment_id", str(task.experiment_id)),
             ("base_seed", str(task.seed_base)),
             ("effective_seed", str(task.effective_seed)),
@@ -1080,7 +1114,6 @@ class TokenLock:
 
 
 def local_worker_run_task(
-    launch_script: Path,
     spec_path: Path,
     task_id: int,
     env: dict[str, str],
@@ -1090,7 +1123,8 @@ def local_worker_run_task(
 ) -> int:
     ensure_dir(log_path.parent)
     started = time.time()
-    cmd = [sys.executable, str(launch_script), "worker", str(spec_path), "--task-id", str(task_id)]
+    python_bin = resolve_python_bin(repo_root())
+    cmd = [python_bin, str(Path(__file__).resolve()), "worker", str(spec_path), "--task-id", str(task_id)]
 
     with log_path.open("w", encoding="utf-8") as handle:
         handle.write(f"LOCAL_ARRAY_SPEC={spec_path}\n")
@@ -1154,7 +1188,6 @@ def local_main(args: argparse.Namespace) -> int:
         return 0
 
     failures: List[Tuple[int, int]] = []
-    launch_script = Path(__file__).resolve()
     base_env = os.environ.copy()
     base_env.pop("SLURM_ARRAY_TASK_ID", None)
     base_env["CUDA_VISIBLE_DEVICES"] = args.cuda
@@ -1167,9 +1200,9 @@ def local_main(args: argparse.Namespace) -> int:
         if args.gpu_tokens > 0:
             lock = TokenLock(token_lock_dir, args.gpu_tokens, args.gpu_lock_poll)
             with lock.acquire():
-                rc = local_worker_run_task(launch_script, spec.path, task_id, base_env, log_path, dry_run=args.dry_run)
+                rc = local_worker_run_task(spec.path, task_id, base_env, log_path, dry_run=args.dry_run)
         else:
-            rc = local_worker_run_task(launch_script, spec.path, task_id, base_env, log_path, dry_run=args.dry_run)
+            rc = local_worker_run_task(spec.path, task_id, base_env, log_path, dry_run=args.dry_run)
         return task_id, rc, log_path
 
     if args.jobs == 1:
@@ -1242,6 +1275,7 @@ def chunk_ranges(start: int, end_inclusive: int, chunk_size: int) -> Iterable[Tu
 def cc_main(args: argparse.Namespace) -> int:
     spec = load_spec(args.spec)
     plan = build_plan(spec)
+    root = repo_root()
 
     if args.chunk_size < 1:
         print("ERROR: --chunk-size must be >= 1", file=sys.stderr)
@@ -1287,9 +1321,9 @@ def cc_main(args: argparse.Namespace) -> int:
         if spec.slurm.mem:
             cmd.append(f"--mem={spec.slurm.mem}")
         if spec.slurm.output:
-            cmd.append(f"--output={spec.slurm.output}")
+            cmd.append(f"--output={resolve_slurm_path(spec.slurm.output, root)}")
         if spec.slurm.error:
-            cmd.append(f"--error={spec.slurm.error}")
+            cmd.append(f"--error={resolve_slurm_path(spec.slurm.error, root)}")
         if spec.slurm.mail_user:
             cmd.append(f"--mail-user={spec.slurm.mail_user}")
         if spec.slurm.mail_type:
@@ -1307,7 +1341,7 @@ def cc_main(args: argparse.Namespace) -> int:
 
         proc = subprocess.run(
             cmd,
-            cwd=str(repo_root()),
+            cwd=str(root),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -1353,8 +1387,8 @@ def plan_main(args: argparse.Namespace) -> int:
         config = scenario.config or preset_relpath(scenario.algorithm, scenario.dataset).as_posix()
         print(f"  {idx}: algorithm={scenario.algorithm} dataset={scenario.dataset} config={config}")
     print("RUN_EXAMPLES")
-    print(f"  local: python exps/launch.py local {spec.path}")
-    print(f"  cc:    python exps/launch.py cc {spec.path}")
+    print(f"  local: exps/run_local.sh {spec.path}")
+    print(f"  cc:    exps/run_cc.sh {spec.path}")
     return 0
 
 
