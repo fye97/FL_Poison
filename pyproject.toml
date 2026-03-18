@@ -25,5 +25,10 @@ dependencies = [
   "unrar>=0.4,<1",
 ]
 
-[tool.setuptools]
-packages = []
+[project.scripts]
+flpoison = "flpoison.__main__:main"
+flpoison-batch = "flpoison.cli.batchrun:main_entry"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["flpoison*"]

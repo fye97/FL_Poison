@@ -46,7 +46,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from config_utils import resolve_config_path
+from flpoison.utils.config_utils import resolve_config_path
 
 
 TIME_LOG_RE = re.compile(

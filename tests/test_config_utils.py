@@ -1,7 +1,7 @@
-from aggregators import all_aggregators
-from attackers import data_poisoning_attacks, model_poisoning_attacks
+from flpoison.aggregators import all_aggregators
+from flpoison.attackers import data_poisoning_attacks, model_poisoning_attacks
 
-from config_utils import (
+from flpoison.utils.config_utils import (
     attacks_catalog_path,
     defenses_catalog_path,
     list_preset_files,

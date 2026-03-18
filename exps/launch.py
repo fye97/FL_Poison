@@ -23,7 +23,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from config_utils import preset_relpath, resolve_config_path, resolve_preset_for_scenario
+from flpoison.utils.config_utils import preset_relpath, resolve_config_path, resolve_preset_for_scenario
 
 
 CONFIG_DEFAULT_FIELDS = (

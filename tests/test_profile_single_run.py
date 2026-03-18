@@ -8,7 +8,7 @@ PERF_DIR = ROOT / "tests" / "perf"
 if str(PERF_DIR) not in sys.path:
     sys.path.insert(0, str(PERF_DIR))
 
-from performance_utils import perf_summary_path
+from flpoison.utils.performance_utils import perf_summary_path
 from profile_single_run import build_profile_config, resolve_perf_json
 
 

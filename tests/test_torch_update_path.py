@@ -24,13 +24,13 @@ if "hdbscan" not in sys.modules:
     hdbscan_stub.HDBSCAN = _DummyHDBSCAN
     sys.modules["hdbscan"] = hdbscan_stub
 
-from aggregators.mean import Mean
-from aggregators.median import Median
-from aggregators.trimmedmean import TrimmedMean, trimmed_mean
-from fl.algorithms.fedavg import FedAvg
-from fl.algorithms.fedsgd import FedSGD
-from fl.models.model_utils import model2vec
-from fl.server import Server
+from flpoison.aggregators.mean import Mean
+from flpoison.aggregators.median import Median
+from flpoison.aggregators.trimmedmean import TrimmedMean, trimmed_mean
+from flpoison.fl.algorithms.fedavg import FedAvg
+from flpoison.fl.algorithms.fedsgd import FedSGD
+from flpoison.fl.models.model_utils import model2vec
+from flpoison.fl.server import Server
 
 
 def test_mean_aggregate_supports_torch_inputs():

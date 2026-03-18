@@ -14,7 +14,7 @@ outline: deep
 - 2026-03-16 的两次基线实验记录
 
 适用范围：
-- `main.py` 中的运行时性能采集
+- `flpoison/fl/training.py` 中的运行时性能采集（由根目录 `main.py` 入口调用）
 - `tests/perf/profile_single_run.py` 单次基线脚本
 - `torch.profiler` trace 输出
 

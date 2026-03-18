@@ -13,7 +13,7 @@ outline: deep
 - 数据集配置文件：`configs/presets/datasets.yaml`
 
 注意：
-- `main.py` 会先读取 YAML，再用命令行参数覆盖（见 `global_args.py`）。
+- `main.py` 会先读取 YAML，再用命令行参数覆盖（CLI 解析见 `flpoison/cli/args.py`，运行时归一化见 `flpoison/fl/configuration.py`）。
 - `attack_params` 与 `defense_params` 若未显式给出，会从 `attacks` / `defenses` 列表里匹配当前 `attack` / `defense` 填充默认值。
 
 ---
@@ -180,7 +180,7 @@ defenses:
 `trigger_size: 5`, `attack_model: all2one`, `poisoning_ratio: 0.32`, `target_label: 6`, `source_label: 1`, `attack_strategy: continuous`, `single_epoch: 0`, `poison_frequency: 5`, `attack_start_epoch: None`
 
 `BadNets_image`  
-`trigger_path: ./attackers/triggers/trigger_white.png`, `trigger_size: 5`, `attack_model: all2one`, `poisoning_ratio: 0.32`, `target_label: 6`, `source_label: 1`, `attack_strategy: continuous`, `single_epoch: 0`, `poison_frequency: 5`
+`trigger_path: ./flpoison/attackers/triggers/trigger_white.png`, `trigger_size: 5`, `attack_model: all2one`, `poisoning_ratio: 0.32`, `target_label: 6`, `source_label: 1`, `attack_strategy: continuous`, `single_epoch: 0`, `poison_frequency: 5`
 
 `DBA`  
 `attack_model: all2one`, `scaling_factor: 100`, `trigger_factor: [8, 2, 0]`, `poisoning_ratio: 0.32`, `source_label: 2`, `target_label: 7`, `attack_strategy: continuous`, `single_epoch: 0`, `poison_frequency: 5`, `attack_start_epoch: None`  

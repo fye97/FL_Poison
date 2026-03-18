@@ -5,7 +5,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from eval_schedule import DEFAULT_EVAL_INTERVAL, should_run_evaluation
+from flpoison.fl.eval_schedule import DEFAULT_EVAL_INTERVAL, should_run_evaluation
 
 
 def test_should_run_evaluation_uses_interval_and_final_round():

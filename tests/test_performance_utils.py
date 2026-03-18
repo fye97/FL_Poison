@@ -9,8 +9,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from global_utils import setup_logger
-from performance_utils import RuntimeProfiler, perf_summary_path
+from flpoison.utils.global_utils import setup_logger
+from flpoison.utils.performance_utils import RuntimeProfiler, perf_summary_path
 
 
 def build_args():

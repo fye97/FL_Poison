@@ -1,0 +1,173 @@
+import torch
+import time
+
+from flpoison.utils.performance_utils import CudaEventTimer
+
+
+class Worker:
+    def __init__(self, args, worker_id):
+        """worker_id: int, the id of the worker. For client, it should be positive int value; for server, it should be -1.
+        """
+        self.args = args
+        self.worker_id = worker_id
+        self.synthesizer = None  # To be customized in subclass
+        self.runtime_profiler = None
+
+    def __str__(self):
+        return f"worker id: {self.worker_id}"
+
+    def get_dataloader(self, dataset, train_flag=True, **kwargs):
+        """
+        Train poison will shuffle and do poisoning attacks on some samples according to poisoning_ratio;
+        Train No poison will shuffle and will not do poisoning attacks
+        Test poison will not shuffle and will poisoning all samples
+        Test no poison will not shuffle and will not poisoning
+        """
+        device = getattr(self.args, "device", None)
+        pin_memory = getattr(device, "type", None) == "cuda"
+        num_workers = int(getattr(self.args, "num_workers", 0) or 0)
+        batch_size = self.args.batch_size if train_flag else getattr(
+            self.args, "eval_batch_size", self.args.batch_size)
+        loader_kwargs = {
+            "batch_size": batch_size,
+            "shuffle": train_flag,
+            "num_workers": num_workers,
+            "pin_memory": pin_memory,
+        }
+        dataloader = torch.utils.data.DataLoader(
+            dataset, **loader_kwargs)
+        if train_flag:
+            while True:  # add infinite loop for training epoch, because dataloader will be consumed after one dataset iteration
+                for images, targets in dataloader:
+                    yield images, targets
+        else:  # test mode for test dataset
+            # return dataloader
+            for images, targets in dataloader:
+                yield images, targets
+
+    def criterion_fn(self, y_pred, y_true, **kwargs):
+        return torch.nn.functional.cross_entropy(y_pred, y_true)
+
+    def new_if_given(self, value, default):
+        return default if value is None else value
+
+    def train(self, model, train_iterator, optimizer, criterion_fn=None):
+        criterion_fn = self.new_if_given(criterion_fn, self.criterion_fn)
+        optimizer.zero_grad(set_to_none=True)
+        data_start = time.perf_counter()
+        images, targets = next(train_iterator)
+        images, targets = images.to(
+            self.args.device, non_blocking=True), targets.to(self.args.device, non_blocking=True)
+        if self.runtime_profiler is not None and getattr(self.args.device, "type", None) == "cuda":
+            torch.cuda.synchronize(self.args.device)
+        data_duration = time.perf_counter() - data_start
+        if self.runtime_profiler is not None:
+            self.runtime_profiler.add_client_stage(
+                self.worker_id, "data", data_duration)
+
+        if self.runtime_profiler is not None:
+            with CudaEventTimer(self.args.device) as timer:
+                pred_probs = model(images)
+                loss = criterion_fn(pred_probs, targets)
+                loss.backward()
+            self.runtime_profiler.add_client_stage(
+                self.worker_id, "fwd_bwd", timer.wall_sec)
+            self.runtime_profiler.add_client_stage(
+                self.worker_id, "gpu_compute", timer.gpu_sec)
+        else:
+            pred_probs = model(images)
+            loss = criterion_fn(pred_probs, targets)
+            loss.backward()
+        predicted = torch.argmax(pred_probs, dim=1)
+        batch_samples = len(images)
+        batch_correct = (predicted == targets).sum().item()
+        batch_loss_sum = loss.item() * batch_samples
+        return batch_correct, batch_loss_sum, batch_samples
+
+    def step(self, optimizer, **kwargs):
+        if self.runtime_profiler is not None:
+            with CudaEventTimer(self.args.device) as timer:
+                optimizer.step()
+            self.runtime_profiler.add_client_stage(
+                self.worker_id, "opt_step", timer.wall_sec)
+            self.runtime_profiler.add_client_stage(
+                self.worker_id, "gpu_compute", timer.gpu_sec)
+            return
+        optimizer.step()
+
+    def test(self, model, test_loader, imbalanced=False):
+        model.eval()
+        tail_cls_from = self.args.tail_cls_from if imbalanced else 0
+        overall_correct, test_loss, num_samples = 0, 0, 0
+        rest_correct, rest_samples = 0, 0
+
+        with torch.inference_mode():
+            for images, targets in test_loader:
+                images, targets = images.to(
+                    self.args.device, non_blocking=True), targets.to(self.args.device, non_blocking=True)
+                pred_probs = model(images)
+                loss = self.criterion_fn(pred_probs, targets)
+                predicted = torch.argmax(pred_probs, dim=1)
+                num_samples += len(targets)
+                overall_correct += (predicted == targets).sum().item()
+                test_loss += loss.item() * len(targets)
+
+                if imbalanced:
+                    # calculate the rest class accuracy, from 5-9 for 10 classes
+                    rest_mask = targets >= tail_cls_from
+                    rest_correct += (predicted[rest_mask]
+                                     == targets[rest_mask]).sum().item()
+                    rest_samples += rest_mask.sum().item()
+
+        overall_accuracy = overall_correct / num_samples
+        test_loss /= num_samples
+
+        if imbalanced:
+            rest_accuracy = rest_correct / rest_samples if rest_samples > 0 else 0
+            return overall_accuracy, rest_accuracy, test_loss
+
+        return overall_accuracy, test_loss
+
+    def get_optimizer_scheduler(self, model, learning_rate=None, weight_decay=None):
+        learning_rate = self.new_if_given(
+            learning_rate, self.args.learning_rate)
+        weight_decay = self.new_if_given(self.args.weight_decay, weight_decay)
+        if self.args.optimizer == 'SGD':
+            optimizer = torch.optim.SGD(
+                model.parameters(), lr=learning_rate, momentum=self.args.momentum, weight_decay=weight_decay)
+        elif self.args.optimizer == 'Adam':
+            optimizer = torch.optim.Adam(
+                model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+        if hasattr(self.args, 'lr_scheduler') and self.args.lr_scheduler is not None:
+            if self.args.lr_scheduler == 'MultiStepLR':
+                milestones = [int(i*self.args.epochs) if i <
+                              1 else i for i in self.args.milestones]
+                lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(
+                    optimizer, milestones=milestones, gamma=0.1)
+            elif self.args.lr_scheduler == 'StepLR':
+                lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=80, gamma=0.5)
+            elif self.args.lr_scheduler == 'ExponentialLR':
+                lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(
+                    optimizer, gamma=0.9)
+            elif self.args.lr_scheduler == "CosineAnnealingLR":
+                if self.args.algorithm == "FedSGD":
+                    total_epoch = self.args.epochs
+                elif self.args.algorithm in ["FedOpt", "FedAvg"]:
+                    total_epoch = self.args.epochs * self.args.local_epochs
+                lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=total_epoch)
+            else:
+                raise NotImplementedError(f"{self.args.lr_scheduler} is not implemented currently.")
+        else:
+            # keep lr constant for all epochs
+            lr_scheduler = torch.optim.lr_scheduler.LambdaLR(
+                optimizer, lr_lambda=lambda epoch: 1.0)
+
+        return optimizer, lr_scheduler
+
+    def cycle(self, dataloader):
+        """
+        useful when the dataloader is consumed out after one epoch
+        """
+        while True:
+            for images, targets in dataloader:
+                yield images, targets
