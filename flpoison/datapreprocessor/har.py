@@ -10,6 +10,8 @@ from torch.utils.data import Dataset
 import urllib.request
 import zipfile
 
+from flpoison.utils.global_utils import get_context_logger
+
 
 @dataclass(frozen=True)
 class _HarPaths:
@@ -103,10 +105,11 @@ def _download_file(url: str, dst_path: str, timeout: int = 60) -> None:
             out.write(chunk)
 
 
-def _download_and_prepare(root: str, expected_sha256: Optional[str] = None) -> None:
+def _download_and_prepare(root: str, expected_sha256: Optional[str] = None, logger=None) -> None:
     os.makedirs(root, exist_ok=True)
     zip_path = os.path.join(root, "UCI HAR Dataset.zip")
     tmp_path = zip_path + ".part"
+    resolved_logger = get_context_logger(logger, logger_name=__name__)
 
     # If an existing zip validates, reuse it.
     if os.path.exists(zip_path):
@@ -127,7 +130,7 @@ def _download_and_prepare(root: str, expected_sha256: Optional[str] = None) -> N
                         os.remove(tmp_path)
                     except Exception:
                         pass
-                print(f"Downloading UCI HAR dataset from: {url}")
+                resolved_logger.info("Downloading UCI HAR dataset from: %s", url)
                 _download_file(url, tmp_path)
                 os.replace(tmp_path, zip_path)
                 _validate_har_zip(zip_path, expected_sha256=expected_sha256)
@@ -150,10 +153,10 @@ def _download_and_prepare(root: str, expected_sha256: Optional[str] = None) -> N
     _safe_extract_zip(zip_path, root)
 
 
-def _resolve_paths(root: str, download: bool = False, expected_sha256: Optional[str] = None) -> _HarPaths:
+def _resolve_paths(root: str, download: bool = False, expected_sha256: Optional[str] = None, logger=None) -> _HarPaths:
     base_dir = _find_uci_har_dir(root)
     if base_dir is None and download:
-        _download_and_prepare(root, expected_sha256=expected_sha256)
+        _download_and_prepare(root, expected_sha256=expected_sha256, logger=logger)
         base_dir = _find_uci_har_dir(root)
     if base_dir is None:
         raise FileNotFoundError(
@@ -201,13 +204,26 @@ class HAR(Dataset):
       and `label` is int64 tensor in [0..5].
     """
 
-    def __init__(self, root: str = "./data", train: bool = True, download: bool = False, normalize: bool = True):
+    def __init__(
+        self,
+        root: str = "./data",
+        train: bool = True,
+        download: bool = False,
+        normalize: bool = True,
+        logger=None,
+    ):
         self.root = root
         self.train = train
         self.normalize = normalize
+        self.logger = get_context_logger(logger, logger_name=__name__)
 
         expected_sha256 = os.environ.get("FLPOISON_HAR_SHA256")
-        paths = _resolve_paths(root, download=download, expected_sha256=expected_sha256)
+        paths = _resolve_paths(
+            root,
+            download=download,
+            expected_sha256=expected_sha256,
+            logger=self.logger,
+        )
         cache_path = os.path.join(root, "uci_har_cache_v1.npz")
 
         if os.path.exists(cache_path):

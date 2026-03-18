@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from flpoison.fl.models import model_registry
+from flpoison.utils.global_utils import setup_console_logger
 
 simple_config = {"28": [30, 50, 100], # for MNIST, FashionMNIST, FEMNIST
 "32": [32, 64, 512] # for CIFAR-10, CINIC-10
@@ -67,9 +68,10 @@ class simplecnn(nn.Module):
         return x
 
 if __name__ == "__main__":
+    logger = setup_console_logger("flpoison.simplecnn_demo")
     model = simplecnn(input_size=(3, 32, 32), num_classes=10)
-    print(model)
+    logger.info("%s", model)
     # 假设输入是一个批次的图像，形状为 [batch_size, channels, height, width]
     sample_input = torch.randn(1, 3, 32, 32)  # 1 个样本，3 个通道，32x32 像素
     output = model(sample_input)
-    print(output.shape)
+    logger.info("Output shape: %s", output.shape)

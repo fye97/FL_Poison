@@ -1,4 +1,5 @@
 import ast
+import logging
 import os
 from types import SimpleNamespace
 
@@ -13,10 +14,16 @@ from flpoison.utils.config_utils import (
     resolve_config_path,
     validate_experiment_config,
 )
-from flpoison.utils.global_utils import frac_or_int_to_int
+from flpoison.utils.global_utils import (
+    flush_bootstrap_logs,
+    frac_or_int_to_int,
+    queue_bootstrap_log,
+    setup_console_logger,
+)
 
 
 KNOWN_ATTACKS = ['NoAttack'] + model_poisoning_attacks + data_poisoning_attacks
+BOOTSTRAP_LOGGER_NAME = "flpoison.bootstrap"
 
 
 def read_yaml(filename):
@@ -70,7 +77,7 @@ def override_args(args, cli_args):
             setattr(args, key, value)
             # keep stdout clean for experiment-control knobs
             if key not in ['num_experiments', 'experiment_id']:
-                print(f"Warning: Overriding {key} with {value}")
+                queue_bootstrap_log(args, logging.WARNING, f"Overriding {key} with {value}")
 
     # override attack, defense, attack_params, defense_params
     for param_type in ['attack', 'defense']:
@@ -91,6 +98,10 @@ def override_args(args, cli_args):
 
 
 def benchmark_preprocess(args):
+    bootstrap_logger = setup_console_logger(
+        BOOTSTRAP_LOGGER_NAME,
+        color=getattr(args, "log_color", "auto"),
+    )
     for attack_i in args.attacks:
         for defense_j in args.defenses:
             args.attack, args.attack_params = attack_i['attack'], attack_i.get(
@@ -98,11 +109,19 @@ def benchmark_preprocess(args):
             args.defense, args.defense_params = defense_j['defense'], defense_j.get(
                 'defense_params')
             single_preprocess(args)
+            flush_bootstrap_logs(args, bootstrap_logger)
             if os.path.exists(args.output):
-                print(f"File {args.output.split('/')[-1]} exists, skip")
+                bootstrap_logger.info(
+                    "File %s exists, skip",
+                    args.output.split('/')[-1],
+                )
                 continue
-            print(
-                f"Running {args.attack} with {args.defense} under {args.distribution}")
+            bootstrap_logger.info(
+                "Running %s with %s under %s",
+                args.attack,
+                args.defense,
+                args.distribution,
+            )
 
 
 def single_preprocess(args):
@@ -120,11 +139,12 @@ def single_preprocess(args):
         device = torch.device("mps")
     else:
         device = torch.device("cpu")
-    print(f"Using device: {device}")
     args.device = device
     # ensure optional flags exist
     if not hasattr(args, 'log_stream') or args.log_stream is None:
         args.log_stream = True
+    if not hasattr(args, 'log_color') or args.log_color is None:
+        args.log_color = "auto"
     args.num_adv = frac_or_int_to_int(args.num_adv, args.num_clients)
     if not hasattr(args, 'eval_batch_size') or args.eval_batch_size is None:
         args.eval_batch_size = args.batch_size

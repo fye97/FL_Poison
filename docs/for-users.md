@@ -97,6 +97,14 @@ python -m flpoison \
   --seed 123
 ```
 
+控制台日志默认会在 TTY 终端里自动着色；如果你想强制关闭颜色，例如为了粘贴到不支持 ANSI 的终端，可以加：
+
+```bash
+python -m flpoison \
+  --config configs/FedSGD_MNIST_Lenet.yaml \
+  --no-log_color
+```
+
 如果要覆盖攻击或防御的参数对象，需要整体传入该参数对象，而不是只改其中一个字段：
 
 ```bash

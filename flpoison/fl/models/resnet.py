@@ -10,6 +10,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from flpoison.fl.models import model_registry
+from flpoison.utils.global_utils import setup_console_logger
 
 
 class BasicBlock(nn.Module):
@@ -131,8 +132,9 @@ def resnet152(num_classes):
 
 
 def test():
-    net = resnet18()
+    logger = setup_console_logger("flpoison.resnet_demo")
+    net = resnet18(10)
     y = net(torch.randn(1, 3, 32, 32))
-    print(y.size())
+    logger.info("Output shape: %s", y.size())
 
 # test()

@@ -153,6 +153,12 @@ def read_args():
         help="Enable logging to stdout (tqdm-safe).",
     )
     parser.add_argument(
+        "--log_color",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Colorize console logs. Default: auto-detect only on TTY streams.",
+    )
+    parser.add_argument(
         "-record_time",
         "--record_time",
         action="store_true",

@@ -56,6 +56,7 @@ outline: deep
 | `torch_profile_memory` | bool | `torch.profiler` 是否记录显存/内存信息。默认 `True`。 |
 | `torch_profile_with_stack` | bool | `torch.profiler` 是否记录 Python stack。默认 `False`。 |
 | `log_stream` | bool | 是否将日志输出到 stdout（适配 tqdm）。 |
+| `log_color` | bool 或 `auto` | 是否为控制台日志启用 ANSI 彩色输出。默认 `auto`，仅在 TTY 终端中着色；文件日志始终保持纯文本。 |
 | `num_adv` | float 或 int | 对抗客户端数量或比例。`<1` 视为比例，`>=1` 视为绝对数量。 |
 | `attack` | 见下方“攻击选项” | 当前实验使用的攻击方法。 |
 | `defense` | 见下方“防御选项” | 当前实验使用的防御/聚合器。 |
@@ -114,6 +115,7 @@ defenses:
 - 训练日志每轮都会输出轻量级在线统计：`Train Acc`、`Train loss`、`Train samples`、`Round time`。
 - `train accuracy` / `train loss` / `train_samples` 来自训练过程中的在线统计，不会为了记录 `train_metrics` 再额外完整扫描一遍 train set。
 - `test_metrics` 只在评估轮写入；非评估轮该字段为空对象是预期行为。
+- `log_color=auto` 时，终端里会按日志级别着色；如果你把输出重定向到文件、管道或 CI，ANSI 颜色码会自动关闭。
 - `torch_profile=True` 时，会在 `logs/torch_traces/...` 下输出 trace 文件，并在训练日志尾部打印 top ops/hints，用于检查 `cudaMemcpyAsync`、小 kernel、DataLoader、Python 开销。
 - 推荐用 `tests/perf/profile_single_run.py` 固定基线配置并执行单次 profiling run。
 

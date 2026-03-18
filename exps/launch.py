@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import queue
 import shlex
@@ -24,6 +25,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from flpoison.utils.config_utils import preset_relpath, resolve_config_path, resolve_preset_for_scenario
+from flpoison.utils.global_utils import setup_console_logger
 
 
 CONFIG_DEFAULT_FIELDS = (
@@ -46,6 +48,7 @@ DEFAULT_LOCAL_LOG_DIR = "logs/local_array"
 DEFAULT_LOCAL_RESULT_ROOT = "logs/local_runs"
 DEFAULT_SLURM_OUTPUT = "logs/slurm/%x_%A_%a.out"
 DEFAULT_SLURM_ERROR = "logs/slurm/%x_%A_%a.err"
+LOGGER = setup_console_logger("flpoison.launch", level=logging.INFO)
 
 
 @dataclass(frozen=True)
@@ -594,6 +597,12 @@ def format_command(cmd: Sequence[str]) -> str:
     return " ".join(shlex.quote(part) for part in cmd)
 
 
+def log_block(title: str, rows: Sequence[str]) -> None:
+    LOGGER.info(title)
+    for row in rows:
+        LOGGER.info("  %s", row)
+
+
 def run_cmd_capture(cmd: Sequence[str], *, cwd: Optional[Path] = None, env: Optional[dict[str, str]] = None) -> str:
     proc = subprocess.run(
         list(cmd),
@@ -685,9 +694,10 @@ def stage_dataset_to_local(dataset_name: str, src_root: Path, dst_root: Path) ->
     if not copied_any and dataset_name not in mapping:
         copied_any = copy_dir_contents(src_root, dst_root)
     if not copied_any:
-        print(
-            f"WARN: No pre-staged dataset assets found for {dataset_name} under {src_root}; the job may trigger downloads.",
-            file=sys.stderr,
+        LOGGER.warning(
+            "No pre-staged dataset assets found for %s under %s; the job may trigger downloads.",
+            dataset_name,
+            src_root,
         )
 
 
@@ -709,9 +719,11 @@ def check_cuda(python_bin: str, *, retry_max: int, retry_sleep: int) -> bool:
         proc = subprocess.run([python_bin, "-c", probe], check=False)
         if proc.returncode == 0:
             return True
-        print(
-            f"WARN: CUDA not available on {socket.gethostname()} (try {attempt}/{retry_max}).",
-            file=sys.stderr,
+        LOGGER.warning(
+            "CUDA not available on %s (try %d/%d).",
+            socket.gethostname(),
+            attempt,
+            retry_max,
         )
         if have_cmd("nvidia-smi"):
             subprocess.run(["nvidia-smi", "-L"], check=False)
@@ -730,13 +742,17 @@ def maybe_requeue_for_cuda_failure(runtime: RuntimeSpec) -> bool:
 
     restart_count = parse_non_negative_int(os.environ.get("SLURM_RESTART_COUNT", "0"), field_name="SLURM_RESTART_COUNT")
     if not job_to_requeue or restart_count >= runtime.cuda_max_requeue:
-        print(
-            f"WARN: Max CUDA requeue attempts reached ({runtime.cuda_max_requeue}) or job id unavailable.",
-            file=sys.stderr,
+        LOGGER.warning(
+            "Max CUDA requeue attempts reached (%d) or job id unavailable.",
+            runtime.cuda_max_requeue,
         )
         return False
 
-    print(f"WARN: CUDA unavailable; requeueing {job_to_requeue} (restart_count={restart_count}).", file=sys.stderr)
+    LOGGER.warning(
+        "CUDA unavailable; requeueing %s (restart_count=%d).",
+        job_to_requeue,
+        restart_count,
+    )
     if os.environ.get("SLURM_NODELIST"):
         subprocess.run(
             ["scontrol", "update", f"JobId={job_to_requeue}", f"ExcNodeList={os.environ['SLURM_NODELIST']}"],
@@ -752,7 +768,7 @@ def maybe_requeue_for_cuda_failure(runtime: RuntimeSpec) -> bool:
     )
     if proc.returncode == 0:
         return True
-    print("WARN: scontrol requeue failed; falling back to a hard failure.", file=sys.stderr)
+    LOGGER.warning("scontrol requeue failed; falling back to a hard failure.")
     return False
 
 
@@ -841,12 +857,12 @@ def worker_main(args: argparse.Namespace) -> int:
     if task_id is None:
         env_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
         if env_task_id is None:
-            print("ERROR: worker requires --task-id or SLURM_ARRAY_TASK_ID", file=sys.stderr)
+            LOGGER.error("worker requires --task-id or SLURM_ARRAY_TASK_ID")
             return 2
         task_id = parse_non_negative_int(env_task_id, field_name="SLURM_ARRAY_TASK_ID")
 
     if task_id < 0 or task_id >= plan.total:
-        print(f"ERROR: task id out of range 0..{plan.total - 1}: {task_id}", file=sys.stderr)
+        LOGGER.error("task id out of range 0..%d: %d", plan.total - 1, task_id)
         return 2
 
     task = plan.tasks[task_id]
@@ -877,9 +893,9 @@ def worker_main(args: argparse.Namespace) -> int:
             if data_root.exists():
                 stage_dataset_to_local(task.dataset, data_root, local_repo / "data")
             else:
-                print(
-                    f"WARN: DATA_SRC_ROOT not found: {data_root}. Dataset may download and stress shared filesystems.",
-                    file=sys.stderr,
+                LOGGER.warning(
+                    "DATA_SRC_ROOT not found: %s. Dataset may download and stress shared filesystems.",
+                    data_root,
                 )
             run_repo = local_repo
             runtime_output_file = local_results_dir / output_basename
@@ -903,27 +919,35 @@ def worker_main(args: argparse.Namespace) -> int:
         output_file=runtime_output_file,
     )
 
-    print("Job context:")
-    print(f"  spec={spec.path}")
-    print(f"  task_id={task.task_id}")
-    print(f"  runtime_platform={platform}")
-    print(f"  host={socket.gethostname()}")
-    print(f"  job_id={os.environ.get('SLURM_JOB_ID', 'n/a')} array_task_id={os.environ.get('SLURM_ARRAY_TASK_ID', str(task.task_id))}")
-    print(f"  code_root={root}")
-    print(f"  data_root={data_root}")
-    print(f"  python_bin={python_bin}")
-    print(f"  scratch_root={scratch_root}")
-    print(f"  result_root={result_root}")
-    print(f"  slurm_tmpdir={os.environ.get('SLURM_TMPDIR', '')}")
-    print(f"  cuda_visible_devices={os.environ.get('CUDA_VISIBLE_DEVICES', '')}")
-    print("Resolved experiment:")
-    print(f"  config={task.config_name}")
-    print(f"  scenario_alg={task.algorithm} scenario_data={task.dataset}")
-    print(f"  distribution={task.distribution} dirichlet_alpha={task.dirichlet_alpha} im_iid_gamma={task.im_iid_gamma}")
-    print(f"  model={task.model} epochs={task.epochs} num_clients={task.num_clients} lr={task.learning_rate}")
-    print(f"  num_adv={task.num_adv} base_seed={task.seed_base} effective_seed={task.effective_seed}")
-    print(f"  experiment_id={task.experiment_id}")
-    print(f"  attack={task.attack} defense={task.defense}")
+    log_block(
+        "Job context:",
+        [
+            f"spec={spec.path}",
+            f"task_id={task.task_id}",
+            f"runtime_platform={platform}",
+            f"host={socket.gethostname()}",
+            f"job_id={os.environ.get('SLURM_JOB_ID', 'n/a')} array_task_id={os.environ.get('SLURM_ARRAY_TASK_ID', str(task.task_id))}",
+            f"code_root={root}",
+            f"data_root={data_root}",
+            f"python_bin={python_bin}",
+            f"scratch_root={scratch_root}",
+            f"result_root={result_root}",
+            f"slurm_tmpdir={os.environ.get('SLURM_TMPDIR', '')}",
+            f"cuda_visible_devices={os.environ.get('CUDA_VISIBLE_DEVICES', '')}",
+        ],
+    )
+    log_block(
+        "Resolved experiment:",
+        [
+            f"config={task.config_name}",
+            f"scenario_alg={task.algorithm} scenario_data={task.dataset}",
+            f"distribution={task.distribution} dirichlet_alpha={task.dirichlet_alpha} im_iid_gamma={task.im_iid_gamma}",
+            f"model={task.model} epochs={task.epochs} num_clients={task.num_clients} lr={task.learning_rate}",
+            f"num_adv={task.num_adv} base_seed={task.seed_base} effective_seed={task.effective_seed}",
+            f"experiment_id={task.experiment_id}",
+            f"attack={task.attack} defense={task.defense}",
+        ],
+    )
 
     cuda_ok = check_cuda(
         python_bin,
@@ -935,9 +959,9 @@ def worker_main(args: argparse.Namespace) -> int:
         if require_cuda:
             if maybe_requeue_for_cuda_failure(spec.runtime):
                 return 0
-            print("ERROR: CUDA still unavailable; aborting to avoid silent CPU fallback.", file=sys.stderr)
+            LOGGER.error("CUDA still unavailable; aborting to avoid silent CPU fallback.")
             return 1
-        print("WARN: CUDA unavailable; continuing with local CPU/MPS fallback.", file=sys.stderr)
+        LOGGER.warning("CUDA unavailable; continuing with local CPU/MPS fallback.")
 
     write_metadata(
         metadata_file,
@@ -971,15 +995,14 @@ def worker_main(args: argparse.Namespace) -> int:
         task_cmd,
     )
 
-    print("Launch command:")
-    print(f"  {format_command(task_cmd)}")
+    log_block("Launch command:", [format_command(task_cmd)])
 
     proc: Optional[subprocess.Popen[str]] = None
 
     def sync_results() -> None:
         if local_results_dir is not None:
             sync_dir_contents(local_results_dir, final_log_dir)
-            print(f"Saved results to: {final_log_dir}", file=sys.stderr)
+            LOGGER.info("Saved results to: %s", final_log_dir)
 
     def on_signal(signum: int, _frame: Any) -> None:
         if proc is not None and proc.poll() is None:
@@ -1156,19 +1179,19 @@ def local_main(args: argparse.Namespace) -> int:
     log_dir = (repo_root() / args.log_dir).resolve()
 
     if args.jobs < 1:
-        print("ERROR: --jobs must be >= 1", file=sys.stderr)
+        LOGGER.error("--jobs must be >= 1")
         return 2
     if args.gpu_tokens < 1:
-        print("ERROR: --gpu-tokens must be >= 1", file=sys.stderr)
+        LOGGER.error("--gpu-tokens must be >= 1")
         return 2
     if args.gpu_lock_poll <= 0:
-        print("ERROR: --gpu-lock-poll must be > 0", file=sys.stderr)
+        LOGGER.error("--gpu-lock-poll must be > 0")
         return 2
 
     ids = parse_ids(args.ids, plan.total)
     bad = [task_id for task_id in ids if task_id < 0 or task_id >= plan.total]
     if bad:
-        print(f"ERROR: task ids out of range 0..{plan.total - 1}: {bad[:20]}", file=sys.stderr)
+        LOGGER.error("task ids out of range 0..%d: %s", plan.total - 1, bad[:20])
         return 2
 
     if args.resume:
@@ -1179,12 +1202,12 @@ def local_main(args: argparse.Namespace) -> int:
                 filtered.append(task_id)
         ids = filtered
 
-    print(f"SPEC={spec.name}")
-    print(f"TOTAL={plan.total}")
-    print(f"RUN_IDS={len(ids)} (first={ids[0] if ids else 'n/a'}, last={ids[-1] if ids else 'n/a'})")
-    print(f"LOG_DIR={log_dir}")
-    print(f"CUDA_VISIBLE_DEVICES={args.cuda}")
-    print(f"JOBS={args.jobs} GPU_TOKENS={args.gpu_tokens}")
+    LOGGER.info("SPEC=%s", spec.name)
+    LOGGER.info("TOTAL=%d", plan.total)
+    LOGGER.info("RUN_IDS=%d (first=%s, last=%s)", len(ids), ids[0] if ids else 'n/a', ids[-1] if ids else 'n/a')
+    LOGGER.info("LOG_DIR=%s", log_dir)
+    LOGGER.info("CUDA_VISIBLE_DEVICES=%s", args.cuda)
+    LOGGER.info("JOBS=%d GPU_TOKENS=%d", args.jobs, args.gpu_tokens)
     if not ids:
         return 0
 
@@ -1194,7 +1217,7 @@ def local_main(args: argparse.Namespace) -> int:
     base_env["CUDA_VISIBLE_DEVICES"] = args.cuda
 
     token_lock_dir = (log_dir / args.gpu_lock_dir).resolve()
-    print(f"GPU_LOCK_DIR={token_lock_dir} GPU_LOCK_POLL={args.gpu_lock_poll}")
+    LOGGER.info("GPU_LOCK_DIR=%s GPU_LOCK_POLL=%s", token_lock_dir, args.gpu_lock_poll)
 
     def run_single(task_id: int) -> Tuple[int, int, Path]:
         log_path = log_dir / f"{spec.name}_task{task_id}.out"
@@ -1209,11 +1232,11 @@ def local_main(args: argparse.Namespace) -> int:
     if args.jobs == 1:
         for idx, task_id in enumerate(ids, start=1):
             log_path = log_dir / f"{spec.name}_task{task_id}.out"
-            print(f"[{idx}/{len(ids)}] run task={task_id} -> {log_path}")
+            LOGGER.info("[%d/%d] run task=%d -> %s", idx, len(ids), task_id, log_path)
             tid, rc, _ = run_single(task_id)
             if rc != 0:
                 failures.append((tid, rc))
-                print(f"  FAIL task={tid} rc={rc}", file=sys.stderr)
+                LOGGER.error("FAIL task=%d rc=%d", tid, rc)
                 if args.stop_on_fail:
                     break
     else:
@@ -1248,10 +1271,10 @@ def local_main(args: argparse.Namespace) -> int:
                     break
                 continue
             done += 1
-            print(f"[{done}/{total_count}] done task={tid} rc={rc} -> {log_path}")
+            LOGGER.info("[%d/%d] done task=%d rc=%d -> %s", done, total_count, tid, rc, log_path)
             if rc != 0:
                 failures.append((tid, rc))
-                print(f"  FAIL task={tid} rc={rc}", file=sys.stderr)
+                LOGGER.error("FAIL task=%d rc=%d", tid, rc)
                 if args.stop_on_fail:
                     stop_evt.set()
 
@@ -1260,7 +1283,7 @@ def local_main(args: argparse.Namespace) -> int:
             thread.join(timeout=1.0)
 
     if failures:
-        print("FAILED_TASKS:", ", ".join(f"{tid}:{rc}" for tid, rc in failures), file=sys.stderr)
+        LOGGER.error("FAILED_TASKS: %s", ", ".join(f"{tid}:{rc}" for tid, rc in failures))
         return 1
     return 0
 
@@ -1279,18 +1302,18 @@ def cc_main(args: argparse.Namespace) -> int:
     root = repo_root()
 
     if args.chunk_size < 1:
-        print("ERROR: --chunk-size must be >= 1", file=sys.stderr)
+        LOGGER.error("--chunk-size must be >= 1")
         return 2
     if args.start_id < 0:
-        print("ERROR: --start-id must be >= 0", file=sys.stderr)
+        LOGGER.error("--start-id must be >= 0")
         return 2
 
     end_id = plan.total - 1 if args.end_id is None else args.end_id
     if end_id < args.start_id:
-        print("ERROR: --end-id must be >= --start-id", file=sys.stderr)
+        LOGGER.error("--end-id must be >= --start-id")
         return 2
     if end_id >= plan.total:
-        print(f"ERROR: --end-id must be <= {plan.total - 1}", file=sys.stderr)
+        LOGGER.error("--end-id must be <= %d", plan.total - 1)
         return 2
 
     array_parallel = args.array_parallel or spec.slurm.array_parallel
@@ -1298,13 +1321,13 @@ def cc_main(args: argparse.Namespace) -> int:
     job_name = spec.slurm.job_name or spec.name
 
     chunks = list(chunk_ranges(args.start_id, end_id, args.chunk_size))
-    print(f"SPEC={spec.name}")
-    print(f"SPEC_FILE={spec.path}")
-    print(f"TOTAL={plan.total}")
-    print(f"SUBMIT_RANGE={args.start_id}-{end_id}")
-    print(f"CHUNK_SIZE={args.chunk_size}")
-    print(f"ARRAY_PARALLEL={array_parallel}")
-    print(f"CHUNKS={len(chunks)}")
+    LOGGER.info("SPEC=%s", spec.name)
+    LOGGER.info("SPEC_FILE=%s", spec.path)
+    LOGGER.info("TOTAL=%d", plan.total)
+    LOGGER.info("SUBMIT_RANGE=%d-%d", args.start_id, end_id)
+    LOGGER.info("CHUNK_SIZE=%d", args.chunk_size)
+    LOGGER.info("ARRAY_PARALLEL=%d", array_parallel)
+    LOGGER.info("CHUNKS=%d", len(chunks))
 
     for idx, (chunk_start, chunk_end) in enumerate(chunks, start=1):
         cmd: List[str] = ["sbatch", f"--array={chunk_start}-{chunk_end}%{array_parallel}"]
@@ -1336,7 +1359,7 @@ def cc_main(args: argparse.Namespace) -> int:
         cmd.append(str(entry_script))
         cmd.append(str(spec.path))
 
-        print(f"[{idx}/{len(chunks)}] {format_command(cmd)}")
+        LOGGER.info("[%d/%d] %s", idx, len(chunks), format_command(cmd))
         if args.dry_run:
             continue
 
@@ -1350,7 +1373,7 @@ def cc_main(args: argparse.Namespace) -> int:
         )
         output = (proc.stdout or "").rstrip()
         if output:
-            print(output)
+            LOGGER.info(output)
         if proc.returncode != 0:
             return int(proc.returncode)
 
@@ -1375,21 +1398,21 @@ def plan_main(args: argparse.Namespace) -> int:
         "experiment_ids": len(spec.experiment_ids),
     }
 
-    print(f"SPEC={spec.name}")
-    print(f"SPEC_FILE={spec.path}")
+    LOGGER.info("SPEC=%s", spec.name)
+    LOGGER.info("SPEC_FILE=%s", spec.path)
     if spec.description:
-        print(f"DESCRIPTION={spec.description}")
-    print(f"TOTAL={plan.total}")
-    print("GRID_DIMS")
+        LOGGER.info("DESCRIPTION=%s", spec.description)
+    LOGGER.info("TOTAL=%d", plan.total)
+    LOGGER.info("GRID_DIMS")
     for key, value in dims.items():
-        print(f"  {key}={value}")
-    print("SCENARIOS")
+        LOGGER.info("  %s=%s", key, value)
+    LOGGER.info("SCENARIOS")
     for idx, scenario in enumerate(spec.scenarios):
         config = scenario.config or preset_relpath(scenario.algorithm, scenario.dataset).as_posix()
-        print(f"  {idx}: algorithm={scenario.algorithm} dataset={scenario.dataset} config={config}")
-    print("RUN_EXAMPLES")
-    print(f"  local: exps/run_local.sh {spec.path}")
-    print(f"  cc:    exps/run_cc.sh {spec.path}")
+        LOGGER.info("  %d: algorithm=%s dataset=%s config=%s", idx, scenario.algorithm, scenario.dataset, config)
+    LOGGER.info("RUN_EXAMPLES")
+    LOGGER.info("  local: exps/run_local.sh %s", spec.path)
+    LOGGER.info("  cc:    exps/run_cc.sh %s", spec.path)
     return 0
 
 
@@ -1399,9 +1422,9 @@ def list_main(_: argparse.Namespace) -> int:
         name = normalize_text(raw.get("name") or path.stem).strip()
         description = normalize_text(raw.get("description")).strip()
         if description:
-            print(f"{name}\t{path}\t{description}")
+            LOGGER.info("%s\t%s\t%s", name, path, description)
         else:
-            print(f"{name}\t{path}")
+            LOGGER.info("%s\t%s", name, path)
     return 0
 
 
@@ -1456,7 +1479,7 @@ def main(argv: Sequence[str]) -> int:
     try:
         return int(args.func(args))
     except Exception as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
+        LOGGER.error("%s", exc)
         return 1
 
 

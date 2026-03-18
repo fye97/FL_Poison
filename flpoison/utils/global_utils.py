@@ -4,24 +4,97 @@ import importlib
 import os
 import logging
 import random
+import sys
 import numpy as np
 import torch
 from tqdm import tqdm
 
 
-class TqdmLoggingHandler(logging.Handler):
+class TqdmLoggingHandler(logging.StreamHandler):
+    def __init__(self, stream=None):
+        super().__init__(stream or sys.stdout)
+
     def emit(self, record):
         try:
             msg = self.format(record)
-            tqdm.write(msg)
+            tqdm.write(msg, file=self.stream)
             self.flush()
         except Exception:
             self.handleError(record)
 
 
-def setup_logger(logger_name, log_file, level=logging.INFO, stream=False, use_tqdm=False):
-    logger = logging.getLogger(logger_name)
-    # In repeated experiments within the same Python process, avoid accumulating handlers.
+class ColorFormatter(logging.Formatter):
+    RESET = "\033[0m"
+    COLORS = {
+        logging.DEBUG: "\033[36m",
+        logging.INFO: "\033[32m",
+        logging.WARNING: "\033[33m",
+        logging.ERROR: "\033[31m",
+        logging.CRITICAL: "\033[1;31m",
+    }
+
+    def __init__(self, fmt='%(message)s', use_color=False):
+        super().__init__(fmt)
+        self.use_color = use_color
+
+    def format(self, record):
+        msg = super().format(record)
+        if not self.use_color:
+            return msg
+        color = self.COLORS.get(record.levelno)
+        if not color or not msg:
+            return msg
+        return f"{color}{msg}{self.RESET}"
+
+
+class MaxLevelFilter(logging.Filter):
+    def __init__(self, exclusive_upper_bound):
+        super().__init__()
+        self.exclusive_upper_bound = exclusive_upper_bound
+
+    def filter(self, record):
+        return record.levelno < self.exclusive_upper_bound
+
+
+def normalize_log_color(value):
+    if value is None:
+        return "auto"
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in {"", "auto"}:
+        return "auto"
+    if text in {"1", "true", "yes", "y", "on"}:
+        return True
+    if text in {"0", "false", "no", "n", "off"}:
+        return False
+    raise ValueError(f"invalid log color mode: {value}")
+
+
+def stream_supports_color(stream):
+    if stream is None:
+        return False
+    try:
+        is_tty = stream.isatty()
+    except Exception:
+        is_tty = False
+    if not is_tty:
+        return False
+    return os.environ.get("TERM", "").lower() != "dumb"
+
+
+def should_colorize_stream(color, stream):
+    mode = normalize_log_color(color)
+    if mode is False:
+        return False
+    if os.environ.get("NO_COLOR"):
+        return False
+    if mode is True or os.environ.get("FORCE_COLOR"):
+        return True
+    return stream_supports_color(stream)
+
+
+def clear_logger_handlers(logger):
     if logger.handlers:
         for h in list(logger.handlers):
             logger.removeHandler(h)
@@ -29,21 +102,114 @@ def setup_logger(logger_name, log_file, level=logging.INFO, stream=False, use_tq
                 h.close()
             except Exception:
                 pass
+
+
+def build_stream_handler(*, use_tqdm=False, stream=None, formatter=None):
+    if use_tqdm:
+        handler = TqdmLoggingHandler(stream=stream or sys.stdout)
+    else:
+        handler = logging.StreamHandler(stream)
+    if formatter is not None:
+        handler.setFormatter(formatter)
+    return handler
+
+
+def setup_logger(
+    logger_name,
+    log_file=None,
+    level=logging.INFO,
+    stream=False,
+    use_tqdm=False,
+    color="auto",
+    stream_target=None,
+):
+    logger = logging.getLogger(logger_name)
+    # In repeated experiments within the same Python process, avoid accumulating handlers.
+    clear_logger_handlers(logger)
     logger.propagate = False
-    formatter = logging.Formatter('%(message)s')
-    os.makedirs(os.path.dirname(log_file), exist_ok=True)
-    fileHandler = logging.FileHandler(log_file, mode='w', encoding='utf-8')
-    fileHandler.setFormatter(formatter)
+    plain_formatter = logging.Formatter('%(message)s')
 
     logger.setLevel(level)
-    logger.addHandler(fileHandler)
+
+    if log_file is not None:
+        log_dir = os.path.dirname(log_file)
+        if log_dir:
+            os.makedirs(log_dir, exist_ok=True)
+        fileHandler = logging.FileHandler(log_file, mode='w', encoding='utf-8')
+        fileHandler.setFormatter(plain_formatter)
+        logger.addHandler(fileHandler)
 
     if stream:
-        streamHandler = TqdmLoggingHandler() if use_tqdm else logging.StreamHandler()
-        streamHandler.setFormatter(formatter)
+        default_stream = stream_target
+        if default_stream is None and use_tqdm:
+            default_stream = sys.stdout
+        stream_formatter = ColorFormatter(
+            '%(message)s',
+            use_color=should_colorize_stream(color, default_stream or sys.stderr),
+        )
+        streamHandler = build_stream_handler(
+            use_tqdm=use_tqdm,
+            stream=default_stream,
+            formatter=stream_formatter,
+        )
         logger.addHandler(streamHandler)
 
     return logger
+
+
+def setup_console_logger(logger_name, level=logging.INFO, color="auto"):
+    logger = logging.getLogger(logger_name)
+    clear_logger_handlers(logger)
+    logger.propagate = False
+    logger.setLevel(level)
+
+    stdout_handler = logging.StreamHandler(sys.stdout)
+    stdout_handler.setLevel(logging.DEBUG)
+    stdout_handler.addFilter(MaxLevelFilter(logging.WARNING))
+    stdout_handler.setFormatter(
+        ColorFormatter('%(message)s', use_color=should_colorize_stream(color, sys.stdout))
+    )
+    logger.addHandler(stdout_handler)
+
+    stderr_handler = logging.StreamHandler(sys.stderr)
+    stderr_handler.setLevel(logging.WARNING)
+    stderr_handler.setFormatter(
+        ColorFormatter('%(message)s', use_color=should_colorize_stream(color, sys.stderr))
+    )
+    logger.addHandler(stderr_handler)
+    return logger
+
+
+def get_context_logger(source=None, logger_name=None, level=logging.INFO, color="auto"):
+    if isinstance(source, logging.Logger):
+        return source
+
+    if source is not None:
+        source_logger = getattr(source, "logger", None)
+        if isinstance(source_logger, logging.Logger):
+            return source_logger
+        color = getattr(source, "log_color", color)
+
+    resolved_name = logger_name or __name__
+    logger = logging.getLogger(resolved_name)
+    if logger.handlers:
+        return logger
+    return setup_console_logger(resolved_name, level=level, color=color)
+
+
+def queue_bootstrap_log(args, level, message):
+    bootstrap_logs = getattr(args, "_bootstrap_logs", None)
+    if bootstrap_logs is None:
+        bootstrap_logs = []
+        setattr(args, "_bootstrap_logs", bootstrap_logs)
+    bootstrap_logs.append((int(level), str(message)))
+
+
+def flush_bootstrap_logs(args, logger):
+    for level, message in getattr(args, "_bootstrap_logs", []):
+        logger.log(level, message)
+    if hasattr(args, "_bootstrap_logs"):
+        args._bootstrap_logs = []
 
 
 def actor(category, *attributes):
@@ -116,11 +282,114 @@ class Register(dict):
 
 def print_filtered_args(args, logger):
     args_dict = vars(args)
-    filtered_args = {k: v for k, v in args_dict.items() if k not in [
-        'attacks', 'defenses', 'logger']}
-    msg = ', '.join([f'{key}: {value}' for key,
-                     value in filtered_args.items()]) + '\n'
-    logger.info(msg)
+    hidden_keys = {'attacks', 'defenses', 'logger', '_bootstrap_logs'}
+    remaining = {
+        key: value for key, value in args_dict.items()
+        if key not in hidden_keys
+    }
+    sections = [
+        (
+            "Run",
+            [
+                "seed",
+                "seed_start",
+                "num_experiments",
+                "experiment_id",
+                "epochs",
+                "algorithm",
+                "optimizer",
+                "momentum",
+                "weight_decay",
+                "learning_rate",
+                "lr_scheduler",
+                "milestones",
+                "local_epochs",
+                "eval_interval",
+            ],
+        ),
+        (
+            "Data",
+            [
+                "dataset",
+                "model",
+                "distribution",
+                "dirichlet_alpha",
+                "im_iid_gamma",
+                "tail_cls_from",
+                "num_training_sample",
+                "num_channels",
+                "num_classes",
+                "batch_size",
+                "eval_batch_size",
+                "num_clients",
+                "num_adv",
+                "cache_partition",
+                "mean",
+                "std",
+            ],
+        ),
+        (
+            "Attack / Defense",
+            [
+                "attack",
+                "attack_params",
+                "defense",
+                "defense_params",
+            ],
+        ),
+        (
+            "Runtime",
+            [
+                "device",
+                "gpu_idx",
+                "num_workers",
+                "log_stream",
+                "log_color",
+                "record_time",
+                "torch_profile",
+                "gpu_sample_interval_ms",
+                "torch_profile_wait",
+                "torch_profile_warmup",
+                "torch_profile_active",
+                "torch_profile_repeat",
+                "torch_profile_record_shapes",
+                "torch_profile_memory",
+                "torch_profile_with_stack",
+            ],
+        ),
+        (
+            "Output",
+            [
+                "output",
+                "root",
+                "aug",
+                "partition_visualization",
+            ],
+        ),
+    ]
+
+    lines = ["Configuration Summary"]
+    for title, keys in sections:
+        items = []
+        for key in keys:
+            if key in remaining:
+                items.append((key, remaining.pop(key)))
+        if not items:
+            continue
+        width = max(len(key) for key, _ in items)
+        lines.append(f"[{title}]")
+        for key, value in items:
+            lines.append(f"  {key:<{width}} : {value}")
+        lines.append("")
+
+    if remaining:
+        other_items = sorted(remaining.items())
+        width = max(len(key) for key, _ in other_items)
+        lines.append("[Other]")
+        for key, value in other_items:
+            lines.append(f"  {key:<{width}} : {value}")
+
+    logger.info("\n%s", "\n".join(lines).rstrip())
 
 
 def avg_value(x):

@@ -9,16 +9,19 @@ from torchvision.datasets.folder import ImageFolder
 from torchvision.datasets.utils import download_and_extract_archive, extract_archive, check_integrity
 import numpy as np
 
+from flpoison.utils.global_utils import get_context_logger
+
 
 class CINIC10(ImageFolder):
     base_folder = 'cinic-10'
 
-    def __init__(self, root, train, download, transform=None, target_transform=None):
+    def __init__(self, root, train, download, transform=None, target_transform=None, logger=None):
         self.url = 'https://datashare.is.ed.ac.uk/bitstream/handle/10283/3192/CINIC-10.tar.gz'
         self.archive_filename = 'CINIC-10.tar.gz'
         self.tgz_md5 = '6ee4d0c996905fe93221de577967a372'
         self.root = root
         self.train = train
+        self.logger = get_context_logger(logger, logger_name=__name__)
         self.base_folder = os.path.join(self.root, self.base_folder)
         self.data_folder = os.path.join(
             self.base_folder, 'train' if train else 'test')
@@ -59,31 +62,32 @@ class CINIC10(ImageFolder):
     def _check_integrity(self):
         data_exist = self._check_data_integrity()
         if not data_exist:
-            print('Dataset not found. Checking archive...')
+            self.logger.info("CINIC-10 dataset not found. Checking archive...")
             archive = os.path.join(self.root, self.archive_filename)
             archive_exist = os.path.exists(archive)
             if archive_exist:
-                print('Archive found. Checking integrity...')
+                self.logger.info("CINIC-10 archive found. Verifying integrity...")
                 if check_integrity(archive, self.tgz_md5):
-                    print('Archive integrity verified. Extracting...')
+                    self.logger.info("CINIC-10 archive verified. Extracting...")
                     extract_archive(from_path=archive,
                                     to_path=self.base_folder)
-                    print('Extraction completed.')
+                    self.logger.info("CINIC-10 extraction completed.")
                     return True
                 else:
-                    print(
-                        'Archive corrupted. Please remove the archive and re-download the dataset.')
+                    self.logger.error(
+                        "CINIC-10 archive is corrupted. Remove it and re-download the dataset."
+                    )
                     return False
             else:
-                print('Archive not found.')
+                self.logger.warning("CINIC-10 archive not found.")
                 return False
         return self._check_data_integrity()
 
     def download(self):
         if self._check_integrity():
-            print('Files already downloaded and verified.')
+            self.logger.info("CINIC-10 files already downloaded and verified.")
             return
-        print('Downloading dataset...')
+        self.logger.info("Downloading CINIC-10 dataset...")
         download_and_extract_archive(
             self.url, self.root, self.base_folder, filename=self.archive_filename, md5=self.tgz_md5)
-        print('Download completed.')
+        self.logger.info("CINIC-10 download completed.")

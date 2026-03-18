@@ -11,7 +11,12 @@ from flpoison.datapreprocessor.data_utils import load_data, split_dataset
 from flpoison.fl.configuration import benchmark_preprocess, override_args, single_preprocess
 from flpoison.fl.eval_schedule import should_run_evaluation
 from flpoison.fl.server import Server
-from flpoison.utils.global_utils import print_filtered_args, setup_logger, setup_seed
+from flpoison.utils.global_utils import (
+    flush_bootstrap_logs,
+    print_filtered_args,
+    setup_logger,
+    setup_seed,
+)
 from flpoison.utils.plot_utils import plot_accuracy
 from flpoison.utils.performance_utils import RuntimeProfiler, create_torch_profiler, summarize_torch_profiler
 
@@ -49,7 +54,9 @@ def fl_run(args):
     # setup logger
     args.logger = setup_logger(
         __name__, f'{args.output}', level=logging.INFO,
-        stream=args.log_stream, use_tqdm=args.log_stream)
+        stream=args.log_stream, use_tqdm=args.log_stream,
+        color=getattr(args, "log_color", "auto"))
+    flush_bootstrap_logs(args, args.logger)
     print_filtered_args(args, args.logger)
     runtime_profiler = RuntimeProfiler(
         args, args.logger, args.output) if args.record_time else None

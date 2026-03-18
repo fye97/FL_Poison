@@ -460,13 +460,16 @@ class TriGuardFL(AggregatorBase):
         else:
             raise ValueError(f"Unknown candidate_rule: {rule}")
 
-        print("\nCosine Similarity:", cosine_similarity)
+        self.args.logger.info("TriGuardFL cosine similarity: %s", cosine_similarity)
         malicious_candidate_global = (
             participating_indices[np.asarray(malicious_candidate_index, dtype=int)].tolist()
             if malicious_candidate_index
             else []
         )
-        print("Detected Potential Attackers:", malicious_candidate_global)
+        self.args.logger.info(
+            "TriGuardFL detected potential attackers: %s",
+            malicious_candidate_global,
+        )
 
         w_locals_malicious_candidate = [local_model_vecs[i] for i in malicious_candidate_index]
         w_locals_benign_candidate = [
@@ -508,9 +511,9 @@ class TriGuardFL(AggregatorBase):
         self.alphas[participating_indices] = alpha_part
         self.betas[participating_indices] = beta_part
 
-        print("Detected Attackers:", malicious_global)
+        self.args.logger.info("TriGuardFL detected attackers: %s", malicious_global)
         reputation_after = self.alphas / (self.alphas + self.betas + 1e-12)
-        print("Reputation:", reputation_after)
+        self.args.logger.info("TriGuardFL reputation: %s", reputation_after)
 
         # Aggregate in delta space with optional norm clipping.
         clip_value = float(getattr(self, "delta_clip_value", 0.0) or 0.0)

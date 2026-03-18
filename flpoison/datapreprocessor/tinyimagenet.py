@@ -5,6 +5,8 @@ from torch.utils.data import Dataset
 from torchvision.datasets.utils import download_and_extract_archive, extract_archive
 import hashlib
 
+from flpoison.utils.global_utils import get_context_logger
+
 dir_structure_help = r"""
 TinyImageNetPath
 ├── test
@@ -49,7 +51,7 @@ class TinyImageNet(Dataset):
     md5 = '90528d7ca1a48142e341f4ef8d21d0de'
     splits = ['train', 'val'] # test folder has no labels, so not included
 
-    def __init__(self, root, train=True, transform=None, target_transform=None, download=False):
+    def __init__(self, root, train=True, transform=None, target_transform=None, download=False, logger=None):
         """
         Args:
             root (str): Root directory where the dataset will be stored.
@@ -61,6 +63,7 @@ class TinyImageNet(Dataset):
         self.train = train
         self.transform = transform
         self.target_transform = target_transform
+        self.logger = get_context_logger(logger, logger_name=__name__)
 
         if download:
             self.download()
@@ -120,7 +123,7 @@ class TinyImageNet(Dataset):
         if os.path.exists(self._path('train')) and os.path.exists(self._path('val')):
             return
         else:
-            print("Dataset folder incomplete. Check zip file...")
+            self.logger.info("TinyImageNet dataset folder incomplete. Checking archive...")
             # Check if the zip file exists to verify MD5
             zip_path = os.path.join(self.root, self.filename)
             if os.path.exists(zip_path):
@@ -132,10 +135,11 @@ class TinyImageNet(Dataset):
                 md5_actual = md5_hash.hexdigest()
                 
                 if md5_actual == self.md5:
-                    print("Zip file exists and is complete. Unzipping...")
+                    self.logger.info("TinyImageNet archive verified. Extracting...")
                     extract_archive(zip_path, self.root)
                 else:
-                    print("Dataset exists but is corrupted. Re-downloading...")
+                    self.logger.warning("TinyImageNet archive is corrupted. Re-downloading...")
                     download_and_extract_archive(self.url, self.root, filename=self.filename, md5=self.md5)
             else:
+                self.logger.info("TinyImageNet archive missing. Downloading...")
                 download_and_extract_archive(self.url, self.root, filename=self.filename, md5=self.md5)

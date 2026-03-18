@@ -59,7 +59,8 @@ class DeepSight(AggregatorBase):
         try:
             cluster_labels = self.clustering(NEUPs, DDifs, cosine_dists)
         except RuntimeWarning as e:
-            print(f"!Warning: {e}")
+            self.args.logger.warning("DeepSight clustering warning: %s", e)
+            cluster_labels = np.zeros(self.args.num_clients, dtype=np.int64)
         # print("Ensemble clustering is done")
 
         # 4. Poisoned Cluster Identification

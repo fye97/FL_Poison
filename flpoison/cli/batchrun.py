@@ -1,4 +1,5 @@
 import argparse
+import logging
 import os
 import subprocess
 import sys
@@ -7,15 +8,19 @@ from multiprocessing import Pool
 
 from flpoison.fl.configuration import read_yaml
 from flpoison.utils.config_utils import preset_relpath
+from flpoison.utils.global_utils import setup_console_logger
+
+
+LOGGER = setup_console_logger("flpoison.batchrun", level=logging.INFO)
 
 
 def run_command(command, file_name):
     # Check if the old file exists
     if os.path.exists(f"{file_name}"):
-        print(f"File {file_name} exists, skip")
+        LOGGER.info("File %s exists, skip", file_name)
         return
 
-    print(f"Running command: {command}")
+    LOGGER.info("Running command: %s", command)
     os.makedirs(os.path.dirname(file_name), exist_ok=True)
 
     # Define log files for stdout and stderr
@@ -25,14 +30,15 @@ def run_command(command, file_name):
     process = subprocess.Popen(
         command, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     pid = process.pid
-    print(f"Started command with PID: {pid}")
+    LOGGER.info("Started command with PID: %d", pid)
 
     stdout, stderr = process.communicate()
     if process.returncode == 0:
-        print(f"Command {command} finished successfully with PID: {pid}")
+        LOGGER.info("Command %s finished successfully with PID: %d", command, pid)
     else:
-        print(f"Command {command} failed with PID: {pid}")
-        print(f"Error: {stderr}")
+        LOGGER.error("Command %s failed with PID: %d", command, pid)
+        if stderr:
+            LOGGER.error("Error: %s", stderr.strip())
         os.makedirs(os.path.dirname(tmp), exist_ok=True)
         with open(out_error_file, 'w') as out_error_log:
             out_error_log.write(stdout)  # Save stdout to the log file
@@ -113,8 +119,12 @@ def main(args):
     elif os.path.isdir(os.path.join(current_dir, folder_name)):
         repo_dir = os.path.join(current_dir, folder_name)
     else:
-        print(
-            f"Error: The current directory '{current_dir}' is not in {folder_name} and does not contain an {folder_name} folder.")
+        LOGGER.error(
+            "The current directory '%s' is not in %s and does not contain a %s folder.",
+            current_dir,
+            folder_name,
+            folder_name,
+        )
         sys.exit(1)
 
     # Define the pool
@@ -152,8 +162,8 @@ def get_all_attacks_defenses():
 
 def test():
     attacks, defenses = get_all_attacks_defenses()
-    print(f"attacks = {attacks}", end="\n\n")
-    print(f"defenses = {defenses}")
+    LOGGER.info("attacks = %s\n", attacks)
+    LOGGER.info("defenses = %s", defenses)
 
 
 def main_entry():

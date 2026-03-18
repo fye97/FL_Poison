@@ -13,6 +13,7 @@ from flpoison.datapreprocessor.chmnist import CHMNIST
 from flpoison.utils.plot_utils import plot_label_distribution
 from flpoison.datapreprocessor.tinyimagenet import TinyImageNet
 from flpoison.datapreprocessor.har import HAR
+from flpoison.utils.global_utils import get_context_logger
 
 
 _VISIBLE_DEPRECATION_WARNING = getattr(
@@ -44,12 +45,13 @@ def suppress_torchvision_cifar_pickle_warning(dataset_name):
 def load_data(args):
     # load dataset
     data_directory = './data'
+    dataset_logger = get_context_logger(args, logger_name=__name__)
     if args.dataset == "HAR":
         download = getattr(args, "download", False)
         train_dataset = HAR(
-            root=data_directory, train=True, download=download, normalize=True)
+            root=data_directory, train=True, download=download, normalize=True, logger=dataset_logger)
         test_dataset = HAR(
-            root=data_directory, train=False, download=download, normalize=True)
+            root=data_directory, train=False, download=download, normalize=True, logger=dataset_logger)
     elif args.dataset == "EMNIST":
         trans, test_trans = get_transform(args)
         train_dataset = datasets.EMNIST(data_directory, split="digits", train=True, download=True,
@@ -69,9 +71,9 @@ def load_data(args):
         """
         trans, test_trans = get_transform(args)
         train_dataset = eval(args.dataset)(root=data_directory, train=True, download=True,
-                                transform=trans)
+                                transform=trans, logger=dataset_logger)
         test_dataset = eval(args.dataset)(root=data_directory, train=False, download=True,
-                               transform=test_trans)
+                               transform=test_trans, logger=dataset_logger)
     else:
         raise ValueError("Dataset not implemented yet")
 

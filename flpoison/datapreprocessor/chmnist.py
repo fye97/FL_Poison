@@ -8,10 +8,12 @@ from torchvision import transforms
 import torchvision.models as models
 from torchvision.datasets.utils import download_and_extract_archive
 
+from flpoison.utils.global_utils import get_context_logger, setup_console_logger
+
 class CHMNIST(Dataset):
     dataset_url = "https://zenodo.org/records/53169/files/Kather_texture_2016_image_tiles_5000.zip?download=1"
     zip_md5 = "0ddbebfc56344752028fda72602aaade"
-    def __init__(self, root, train=True, download=False, transform=None, test_split=0.2, random_seed=42):
+    def __init__(self, root, train=True, download=False, transform=None, test_split=0.2, random_seed=42, logger=None):
         """
         Args:
             root (str): Root directory of the dataset folder, Kather_texture_2016_image_tiles_5000, where each subdirectory corresponds to a class.
@@ -23,11 +25,12 @@ class CHMNIST(Dataset):
         self.root_dir = os.path.join(root, "Kather_texture_2016_image_tiles_5000")
         self.transform = transform
         self.train = train
+        self.logger = get_context_logger(logger, logger_name=__name__)
 
         # Automatically download and extract dataset if not present
         if download:
             if not os.path.exists(self.root_dir):
-                print("Dataset not found. Downloading...")
+                self.logger.info("CHMNIST dataset not found. Downloading...")
                 download_and_extract_archive(
                     url=self.dataset_url,
                     download_root=root,
@@ -84,6 +87,7 @@ class CHMNIST(Dataset):
         return image, label
 
 if __name__ == "__main__":
+    logger = setup_console_logger("flpoison.chmnist_demo")
     # Hyperparameters
     batch_size = 32
     learning_rate = 0.001
@@ -92,7 +96,7 @@ if __name__ == "__main__":
     
     # Device configuration
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Using device: {device}")
+    logger.info("Using device: %s", device)
     
     # Data transformations
     train_transform = transforms.Compose([
@@ -110,17 +114,17 @@ if __name__ == "__main__":
     ])
     
     # Dataset and DataLoader
-    dataset_root = "data/Kather_texture_2016_image_tiles_5000"
+    dataset_root = "data"
     
-    train_dataset = CHMNIST(root_dir=dataset_root, transform=train_transform, train=True, test_split=0.2)
-    test_dataset = CHMNIST(root_dir=dataset_root, transform=test_transform, train=False, test_split=0.2)
+    train_dataset = CHMNIST(root=dataset_root, transform=train_transform, train=True, test_split=0.2, logger=logger)
+    test_dataset = CHMNIST(root=dataset_root, transform=test_transform, train=False, test_split=0.2, logger=logger)
     
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=0)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
     
-    print(f"Training set size: {len(train_dataset)}")
-    print(f"Test set size: {len(test_dataset)}")
-    print(f"Class names: {train_dataset.classes}")
+    logger.info("Training set size: %d", len(train_dataset))
+    logger.info("Test set size: %d", len(test_dataset))
+    logger.info("Class names: %s", train_dataset.classes)
     
     # Model
     model = models.resnet34(pretrained=True)

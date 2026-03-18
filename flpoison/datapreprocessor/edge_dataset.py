@@ -8,6 +8,7 @@ import torch
 from torchvision import datasets
 
 from .data_utils import Partition, get_transform, suppress_torchvision_cifar_pickle_warning
+from flpoison.utils.global_utils import get_context_logger
 
 
 class EdgeDataset():
@@ -97,6 +98,7 @@ class SouthwestAirline():
         self.root = root
         self.source_label = 0  # airplane index=0 in CIFAR10
         self.args = args
+        self.logger = get_context_logger(args, logger_name=__name__)
         self.target_label = target_label if target_label else 9
         source_target_check(self.source_label,  self.target_label)
         self.check_integrity()
@@ -120,7 +122,7 @@ class SouthwestAirline():
                 for file in self.filenames:
                     download_link = os.path.join(url_location, file)
                     datasets.utils.download_url(download_link, self.root)
-                print("Successfully downloaded the southwest dataset")
+                self.logger.info("Successfully downloaded the Southwest dataset.")
             except Exception as e:
                 raise Exception(f"Exception: {e}")
 
@@ -170,6 +172,7 @@ class ARDIS():
         self.root = root
         self.source_label = 7
         self.args = args
+        self.logger = get_context_logger(args, logger_name=__name__)
         self.target_label = target_label if target_label else 1
         source_target_check(self.source_label,  self.target_label)
         self.check_integrity()
@@ -192,7 +195,7 @@ class ARDIS():
             try:
                 with rarfile.RarFile(os.path.join(self.data_path, raw_filename)) as rf:
                     rf.extractall(path=self.data_path)
-                print("Successfully downloaded the southwest dataset")
+                self.logger.info("Successfully downloaded and extracted the ARDIS dataset.")
 
             except Exception as e:
                 raise Exception(

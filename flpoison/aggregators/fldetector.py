@@ -159,7 +159,10 @@ class FLDetector(AggregatorBase):
                 break
         else:
             num_cluster = K_max
-            print("FLDetector: No gap detected, No attack detected , return K_max")
+            self.args.logger.info(
+                "FLDetector: no gap detected and no attack inferred; returning K_max=%d",
+                K_max,
+            )
         return num_cluster
 
 
