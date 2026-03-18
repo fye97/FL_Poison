@@ -62,8 +62,8 @@ def read_args():
         "-b",
         "-benchmark",
         "--benchmark",
-        default=False,
-        type=bool,
+        action="store_true",
+        default=None,
         help="Run all combinations of attacks and defenses",
     )
     parser.add_argument("-e", "-epochs", "--epochs", type=int)
