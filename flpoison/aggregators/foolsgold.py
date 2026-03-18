@@ -22,7 +22,7 @@ class FoolsGold(AggregatorBase):
         topk_ratio (float): the ratio of the top-k largest absolute value of the output layer parameters of last global model to identify the indicative features
         """
         self.default_defense_params = {
-            "epsilon": 1.0e-6, "topk_ratio": 0.1}
+            "epsilon": 1.0e-5, "topk_ratio": 0.1}
         self.update_and_set_attr()
 
         self.algorithm = "FedSGD"

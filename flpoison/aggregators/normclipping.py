@@ -17,7 +17,7 @@ class NormClipping(AggregatorBase):
         norm_threshold (float): the threshold for clipping the norm of the updates
         """
         self.default_defense_params = {
-            "weakDP": False, "norm_threshold": 3, "noise_mean": 0, "noise_std": 0.002}
+            "weakDP": True, "norm_threshold": 3, "noise_mean": 0, "noise_std": 0.002}
         self.update_and_set_attr()
 
         self.algorithm = 'FedOpt'

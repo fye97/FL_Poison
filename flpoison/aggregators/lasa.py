@@ -9,7 +9,7 @@ class LASA(AggregatorBase):
     def __init__(self, args, **kwargs):
         super().__init__(args)
         self.default_defense_params = {
-            "norm_bound": 2, "sign_bound": 1, "sparsity": 0.3}  # CIRAR10/100 1,1, otherwise norm_bound=2
+            "norm_bound": 1, "sign_bound": 1, "sparsity": 0.3}  # CIRAR10/100 1,1, otherwise norm_bound=2
         self.update_and_set_attr()
         self.algorithm = "FedSGD"
 

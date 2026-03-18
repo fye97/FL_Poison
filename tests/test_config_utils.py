@@ -33,6 +33,29 @@ EXPECTED_SHARED_ATTACKS = {
     "Neurotoxin",
     "AlterMin",
 }
+EXPECTED_SHARED_DEFENSES = {
+    "Mean",
+    "SimpleClustering",
+    "Krum",
+    "MultiKrum",
+    "TrimmedMean",
+    "Median",
+    "Bulyan",
+    "RFA",
+    "FLTrust",
+    "CenteredClipping",
+    "DnC",
+    "Bucketing",
+    "SignGuard",
+    "TriGuardFL",
+    "LASA",
+    "Auror",
+    "FoolsGold",
+    "NormClipping",
+    "CRFL",
+    "DeepSight",
+    "FLAME",
+}
 
 
 def test_canonical_preset_path_resolves():
@@ -74,7 +97,8 @@ def test_shared_attack_catalog_matches_curated_defaults():
     assert attack_names <= KNOWN_ATTACKS
 
 
-def test_shared_defense_catalog_covers_registered_defenses():
+def test_shared_defense_catalog_matches_curated_defaults():
     payload = load_yaml_mapping(defenses_catalog_path())
     defense_names = {item["defense"] for item in payload["defenses"]}
-    assert defense_names == set(all_aggregators)
+    assert defense_names == EXPECTED_SHARED_DEFENSES
+    assert defense_names <= set(all_aggregators)

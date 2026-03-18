@@ -190,7 +190,7 @@ def main_entry():
         '-defenses',
         '--defenses',
         nargs='+',
-        default=['Mean', 'Krum', 'MultiKrum', 'TrimmedMean', 'Median', 'Bulyan', 'RFA', 'FLTrust', 'CenteredClipping', 'DnC', 'Bucketing', 'SignGuard', 'Auror', 'FoolsGold', 'NormClipping', 'CRFL', 'DeepSight', 'FLAME'],
+        default=['Mean', 'SimpleClustering', 'Krum', 'MultiKrum', 'TrimmedMean', 'Median', 'Bulyan', 'RFA', 'FLTrust', 'CenteredClipping', 'DnC', 'Bucketing', 'SignGuard', 'TriGuardFL', 'LASA', 'Auror', 'FoolsGold', 'NormClipping', 'CRFL', 'DeepSight', 'FLAME'],
         help="List of defenses to use.",
     )
     args = parser.parse_args()

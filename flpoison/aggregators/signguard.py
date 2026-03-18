@@ -23,7 +23,7 @@ class SignGuard(AggregatorBase):
         random_seed (int): the random seed for reproducibility
         """
         self.default_defense_params = {
-            "lower_bound": 0.1, "upper_bound": 3.0, "selection_fraction": 0.1, "clustering": "DBSCAN", "random_seed": 0}
+            "lower_bound": 0.1, "upper_bound": 3.0, "selection_fraction": 0.1, "clustering": "MeanShift", "random_seed": 2}
         self.update_and_set_attr()
         self.algorithm = "FedSGD"
 

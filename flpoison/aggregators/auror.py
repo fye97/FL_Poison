@@ -26,7 +26,7 @@ class Auror(AggregatorBase):
         indicative_find_epoch (int): The first n epoch to find and determinate the indicative features, after that, the indicative features will be fixed
         """
         self.default_defense_params = {
-            "indicative_threshold": 0.002, "indicative_find_epoch": 10}
+            "indicative_threshold": 7.0e-5, "indicative_find_epoch": 10}
         self.update_and_set_attr()
         self.epoch_cnt = 0
         # store the indices of indicative features of self.indicative_find_epoch

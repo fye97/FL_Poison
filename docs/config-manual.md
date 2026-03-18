@@ -225,7 +225,7 @@ defenses:
 ## 各防御默认参数
 
 `Auror`  
-`indicative_threshold: 0.002`, `indicative_find_epoch: 10`
+`indicative_threshold: 7.0e-5`, `indicative_find_epoch: 10`
 
 `Bucketing`  
 `bucket_size: 2`, `selected_aggregator: Krum`  
@@ -256,30 +256,33 @@ defenses:
 `num_sample: 100`
 
 `FoolsGold`  
-`epsilon: 1.0e-6`, `topk_ratio: 0.1`
+`epsilon: 1.0e-5`, `topk_ratio: 0.1`
 
 `Krum`  
 `enable_check: False`
 
 `LASA`  
-`norm_bound: 2`, `sign_bound: 1`, `sparsity: 0.3`
+`norm_bound: 1`, `sign_bound: 1`, `sparsity: 0.3`
 
 `MultiKrum`  
 `avg_percentage: 0.2`, `enable_check: False`
 
 `NormClipping`  
-`weakDP: False`, `norm_threshold: 3`, `noise_mean: 0`, `noise_std: 0.002`
+`weakDP: True`, `norm_threshold: 3`, `noise_mean: 0`, `noise_std: 0.002`
 
 `RFA`  
 `num_iters: 3`, `epsilon: 1.0e-6`
 
 `SignGuard`  
-`lower_bound: 0.1`, `upper_bound: 3.0`, `selection_fraction: 0.1`, `clustering: DBSCAN`, `random_seed: 0`  
+`lower_bound: 0.1`, `upper_bound: 3.0`, `selection_fraction: 0.1`, `clustering: MeanShift`, `random_seed: 2`  
 `clustering` 可选：`MeanShift`, `DBSCAN`, `KMeans`。
 
 `SimpleClustering`  
 `clustering: DBSCAN`  
 `clustering` 可选：`MeanShift`, `DBSCAN`。
+
+`TriGuardFL`  
+`cos_threshold: 0.0`, `cos_filter_method: mad`, `cos_significance: 0.02`, `significance: 0.02`, `discount: 0.9`, `num_items_test: 512`, `eval_batch_size: 128`
 
 `TrimmedMean`  
 `beta: 0.1`

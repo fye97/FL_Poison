@@ -337,7 +337,7 @@ class TriGuardFL(AggregatorBase):
             # Step-1 candidate detection on cosine similarities:
             # - threshold: original rule using cos_threshold
             # - mad: robust significance test via MAD
-            "cos_filter_method": "threshold",
+            "cos_filter_method": "mad",
             "cos_significance": 0.02,
             # Optional additional candidate signal: update norm outliers.
             # - none: disable
