@@ -21,7 +21,7 @@ class LabelFlipping(DPBase, Client):
         target label: the label to be flipped to
         """
         self.default_attack_params = {
-            'attack_model': 'targeted', 'source_label': 2, 'target_label': 7, "attack_strategy": "continuous", "single_epoch": 0, "poison_frequency": 5, "poisoning_ratio": 0.32}
+            'attack_model': 'targeted', 'source_label': 3, 'target_label': 7, "attack_strategy": "continuous", "single_epoch": 0, "poison_frequency": 5, "poisoning_ratio": 0.32}
         self.update_and_set_attr()
 
         self.define_synthesizer()

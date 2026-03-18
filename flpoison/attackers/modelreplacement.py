@@ -24,8 +24,8 @@ class ModelReplacement(MPBase, DPBase, Client):
         alpha: the weight of the classification loss in the total loss
         """
         self.default_attack_params = {
-            'scaling_factor': 50, "alpha": 0.5, "attack_model": "all2one",
-            "poisoning_ratio": 0.32, "target_label": 6, "source_label": 3, "attack_strategy": "continuous", "single_epoch": 0, "poison_frequency": 5}
+            'scaling_factor': 20, "alpha": 0.5, "attack_model": "all2one",
+            "poisoning_ratio": 0.32, "target_label": 7, "source_label": 2, "attack_strategy": "continuous", "single_epoch": 0, "poison_frequency": 5}
         self.update_and_set_attr()
 
         self.define_synthesizer()

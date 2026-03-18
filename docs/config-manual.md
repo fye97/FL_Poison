@@ -14,7 +14,7 @@ outline: deep
 
 注意：
 - `main.py` 会先读取 YAML，再用命令行参数覆盖（CLI 解析见 `flpoison/cli/args.py`，运行时归一化见 `flpoison/fl/configuration.py`）。
-- `attack_params` 与 `defense_params` 若未显式给出，会从 `attacks` / `defenses` 列表里匹配当前 `attack` / `defense` 填充默认值。
+- `attack_params` 与 `defense_params` 若未显式给出，会先从 `attacks` / `defenses` 列表里匹配当前 `attack` / `defense` 填充默认值；若未命中，则回退到对应实现类里的 `default_attack_params` / `default_defense_params`。
 
 ---
 
@@ -174,20 +174,20 @@ defenses:
 `z_max: None`, `attack_start_epoch: None`
 
 `AlterMin`  
-`attack_model: targeted`, `source_label: 3`, `target_label: 7`, `poisoned_sample_cnt: 1`, `boosting_factor: 10`, `rho: 1e-4`, `benign_epochs: 10`, `malicous_epochs: 1`
+`attack_model: targeted`, `source_label: 3`, `target_label: 7`, `poisoned_sample_cnt: 1`, `boosting_factor: 2`, `rho: 1.0e-4`, `benign_epochs: 10`, `malicous_epochs: 5`
 
 `BadNets`  
-`trigger_size: 5`, `attack_model: all2one`, `poisoning_ratio: 0.32`, `target_label: 6`, `source_label: 1`, `attack_strategy: continuous`, `single_epoch: 0`, `poison_frequency: 5`, `attack_start_epoch: None`
+`trigger_size: 10`, `attack_model: all2one`, `poisoning_ratio: 0.32`, `target_label: 7`, `source_label: 1`, `attack_strategy: continuous`, `single_epoch: 0`, `poison_frequency: 5`, `attack_start_epoch: None`
 
 `BadNets_image`  
-`trigger_path: ./flpoison/attackers/triggers/trigger_white.png`, `trigger_size: 5`, `attack_model: all2one`, `poisoning_ratio: 0.32`, `target_label: 6`, `source_label: 1`, `attack_strategy: continuous`, `single_epoch: 0`, `poison_frequency: 5`
+`trigger_path: ./attackers/triggers/trigger_white.png`, `trigger_size: 5`, `attack_model: all2one`, `poisoning_ratio: 0.32`, `target_label: 7`, `source_label: 1`, `attack_strategy: continuous`, `single_epoch: 0`, `poison_frequency: 5`
 
 `DBA`  
-`attack_model: all2one`, `scaling_factor: 100`, `trigger_factor: [8, 2, 0]`, `poisoning_ratio: 0.32`, `source_label: 2`, `target_label: 7`, `attack_strategy: continuous`, `single_epoch: 0`, `poison_frequency: 5`, `attack_start_epoch: None`  
+`attack_model: all2one`, `scaling_factor: 100`, `trigger_factor: [14, 2, 0]`, `poisoning_ratio: 0.32`, `source_label: 2`, `target_label: 7`, `attack_strategy: continuous`, `single_epoch: 0`, `poison_frequency: 5`, `attack_start_epoch: None`  
 `trigger_factor` 含义：`[trigger_size, gap, shift]`。
 
 `EdgeCase`  
-`poisoning_ratio: 0.8`, `epsilon: 0.25`, `PGD_attack: True`, `projection_type: l_2`, `l2_proj_frequency: 1`, `scaling_attack: True`, `scaling_factor: 50`, `target_label: 1`  
+`poisoning_ratio: 0.5`, `epsilon: 0.25`, `PGD_attack: True`, `projection_type: l_2`, `l2_proj_frequency: 1`, `scaling_attack: True`, `scaling_factor: 50`, `target_label: 1`  
 `projection_type` 可选：`l_2`, `l_inf`。
 
 `FangAttack`  
@@ -197,19 +197,19 @@ defenses:
 `noise_mean: 0`, `noise_std: 1`
 
 `IPM`  
-`scaling_factor: 0.1`, `attack_start_epoch: None`
+`scaling_factor: 0.5`, `attack_start_epoch: None`
 
 `LabelFlipping`  
-`attack_model: targeted`, `source_label: 2`, `target_label: 7`, `attack_strategy: continuous`, `single_epoch: 0`, `poison_frequency: 5`, `poisoning_ratio: 0.32`
+`attack_model: targeted`, `source_label: 3`, `target_label: 7`, `attack_strategy: continuous`, `single_epoch: 0`, `poison_frequency: 5`, `poisoning_ratio: 0.32`
 
 `Mimic`  
 `choice: 0`
 
 `MinMax` / `MinSum`  
-`gamma_init: 10.0`, `stop_threshold: 1.0e-5`
+`gamma_init: 10`, `stop_threshold: 1.0e-5`
 
 `ModelReplacement`  
-`scaling_factor: 50`, `alpha: 0.5`, `attack_model: all2one`, `poisoning_ratio: 0.32`, `target_label: 6`, `source_label: 3`, `attack_strategy: continuous`, `single_epoch: 0`, `poison_frequency: 5`
+`scaling_factor: 20`, `alpha: 0.5`, `attack_model: all2one`, `poisoning_ratio: 0.32`, `target_label: 7`, `source_label: 2`, `attack_strategy: continuous`, `single_epoch: 0`, `poison_frequency: 5`
 
 `Neurotoxin`  
 `num_sample: 64`, `topk_ratio: 0.1`, `norm_threshold: 0.2`, `attack_model: all2one`, `poisoning_ratio: 0.32`, `target_label: 6`, `source_label: 1`, `attack_strategy: continuous`, `single_epoch: 0`, `poison_frequency: 5`

@@ -61,7 +61,7 @@ python main.py -config=./configs/FedSGD_MNIST_Lenet.yaml
 ```
 
 ### Run A Specific Attack Or Defense
-Specify the attack and defense method in the configuration file. The corresponding attack or defense parameters in `attacks` or `defenses` are used if `attack_params` or `defense_params` is not specified.
+Specify the attack and defense method in the configuration file. The corresponding attack or defense parameters in `attacks` or `defenses` are used if `attack_params` or `defense_params` is not specified. If the selected attack or defense is not listed in the shared preset, the runtime falls back to the implementation defaults.
 
 Example:
 
@@ -85,7 +85,7 @@ You can override any parameter in the configuration file with command line argum
 python main.py -config=./configs/FedSGD_MNIST_Lenet.yaml -attack_params="{'scaling_factor': 0.5}"
 ```
 
-If you only override `attack` or `defense` without overriding their parameters, the default parameters in the configuration file are used.
+If you only override `attack` or `defense` without overriding their parameters, the runtime first looks for matching entries in the shared preset and otherwise falls back to the implementation defaults.
 
 ```bash
 python main.py -config=./configs/FedSGD_MNIST_Lenet.yaml -attack=MinSum

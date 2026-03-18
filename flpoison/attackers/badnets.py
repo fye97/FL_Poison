@@ -22,7 +22,7 @@ class BadNets(DPBase, Client):
         attack_strategy: ['single-shot', 'fixed-frequency','continuous']
         """
         self.default_attack_params = {
-            'trigger_size': 5, "attack_model": "all2one", "poisoning_ratio": 0.32, "target_label": 6, "source_label": 1, "attack_strategy": "continuous", "single_epoch": 0, "poison_frequency": 5, "attack_start_epoch": None}
+            'trigger_size': 10, "attack_model": "all2one", "poisoning_ratio": 0.32, "target_label": 7, "source_label": 1, "attack_strategy": "continuous", "single_epoch": 0, "poison_frequency": 5, "attack_start_epoch": None}
         self.update_and_set_attr()
         self.define_synthesizer()
         poison_epochs = self.generate_poison_epochs(
@@ -47,8 +47,8 @@ class BadNets_image(DPBase, Client):
 
     def __init__(self, args, worker_id, train_dataset, test_dataset):
         Client.__init__(self, args, worker_id, train_dataset, test_dataset)
-        self.default_attack_params = {"trigger_path": "./flpoison/attackers/triggers/trigger_white.png", "trigger_size": 5, "attack_model": "all2one",
-                                      "poisoning_ratio": 0.32, "target_label": 6, "source_label": 1, "attack_strategy": "continuous", "single_epoch": 0, "poison_frequency": 5}
+        self.default_attack_params = {"trigger_path": "./attackers/triggers/trigger_white.png", "trigger_size": 5, "attack_model": "all2one",
+                                      "poisoning_ratio": 0.32, "target_label": 7, "source_label": 1, "attack_strategy": "continuous", "single_epoch": 0, "poison_frequency": 5}
         self.update_and_set_attr()
         self.define_synthesizer()
         poison_epochs = self.generate_poison_epochs(

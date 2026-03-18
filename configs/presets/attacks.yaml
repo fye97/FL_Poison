@@ -1,21 +1,102 @@
-# Globally available attacks.
-# Component-specific default parameters live in the attack implementations.
+# Shared default/benchmark attack presets.
+# Unlisted attacks can still be selected directly; runtime falls back to the
+# implementation defaults when no matching preset entry is found.
 attacks:
   - attack: NoAttack
-  - attack: MinMax
-  - attack: MinSum
-  - attack: ALIE
-  - attack: FangAttack
   - attack: IPM
-  - attack: SignFlipping
+    attack_params: # Parameters for attacks
+      scaling_factor: 0.5 # 0.5, 100
+      # attack_start_epoch: 11
+  - attack: ALIE
+    # attack_params:
+    #   attack_start_epoch: 41
   - attack: Gaussian
+    attack_params:
+      noise_mean: 0
+      noise_std: 1
   - attack: Mimic
-  - attack: ThreeDFed
+    attack_params:
+      choice: 0
+  - attack: MinMax
+    attack_params:
+      gamma_init: 10
+      stop_threshold: 1.0e-5 # !!YAML specification: for scientific notation, write the base number as a float (e.g. 1.0) and add the sign to the exponent (e.g. +1,-1), such as 1.0e+5
+  - attack: MinSum
+    attack_params:
+      gamma_init: 10
+      stop_threshold: 1.0e-5
+  - attack: FangAttack
+    attack_params:
+      stop_threshold: 1.0e-5
   - attack: BadNets
+    attack_params:
+      trigger_size: 10
+      attack_model: "all2one" # all2one, all2all, targeted, random
+      poisoning_ratio: 0.32 # poisoning portion
+      target_label: 7 # The No. of target label for backdoored images
+      attack_strategy: continuous #  attack_strategy: ['single-shot', 'fixed-frequency','continuous'], `poison_frequency` for fixed-frequency
+      # attack_start_epoch: 21
   - attack: BadNets_image
-  - attack: EdgeCase
-  - attack: ModelReplacement
+    attack_params:
+      trigger_path: ./attackers/triggers/trigger_white.png # Trigger Path
+      trigger_size: 5 # Trigger Size
+      attack_model: "all2one"
+      poisoning_ratio: 0.32 # poisoning portion
+      target_label: 7 # The No. of target label for backdoored images
+      attack_strategy: continuous
   - attack: LabelFlipping
-  - attack: AlterMin
+    attack_params:
+      attack_model: "targeted" # "targeted" will not affect by poisoning_ratio, because it will flip only the source labels in a batch
+      source_label: 3
+      target_label: 7
+      attack_strategy: "continuous"
+      # poisoning_ratio: 0.25 # poisoning portion
+  - attack: ModelReplacement
+    attack_params:
+      scaling_factor: 20 # estimated scaling factor, num_participants / global_lr
+      alpha: 0.5
+      attack_model: "all2one"
+      poisoning_ratio: 0.32
+      source_label: 2
+      target_label: 7
+      attack_strategy: "continuous"
   - attack: DBA
+    attack_params:
+      attack_model: "all2one"
+      scaling_factor: 100
+      trigger_factor: [14, 2, 0]
+      poisoning_ratio: 0.32
+      source_label: 2
+      target_label: 7
+      attack_strategy: "continuous" # "fixed-frequency"
+      # poison_frequency: 10
+      # attack_start_epoch: 150
+  - attack: EdgeCase
+    attack_params:
+      poisoning_ratio: 0.5
+      epsilon: 0.25 # For PGD with replacement, 0.25 for mnist, 0.083 for cifar10
+      projection_type: "l_2"
+      l2_proj_frequency: 1
+      scaling_attack: True
+      scaling_factor: 50
+      target_label: 1 # mnist 1, cifar10 9
   - attack: Neurotoxin
+    attack_params:
+      num_sample: 64
+      topk_ratio: 0.1
+      norm_threshold: 0.2
+      attack_model: "all2one"
+      poisoning_ratio: 0.32
+      source_label: 1
+      target_label: 6
+      attack_strategy: "continuous"
+  - attack: AlterMin
+    attack_params:
+      attack_model: targeted
+      poisoned_sample_cnt: 1
+      boosting_factor: 2
+      rho: 1.0e-4
+      benign_epochs: 10
+      malicous_epochs: 5
+      source_label: 3
+      target_label: 7

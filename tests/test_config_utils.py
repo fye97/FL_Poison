@@ -15,6 +15,24 @@ from flpoison.utils.config_utils import (
 
 
 KNOWN_ATTACKS = {"NoAttack", *model_poisoning_attacks, *data_poisoning_attacks}
+EXPECTED_SHARED_ATTACKS = {
+    "NoAttack",
+    "IPM",
+    "ALIE",
+    "Gaussian",
+    "Mimic",
+    "MinMax",
+    "MinSum",
+    "FangAttack",
+    "BadNets",
+    "BadNets_image",
+    "LabelFlipping",
+    "ModelReplacement",
+    "DBA",
+    "EdgeCase",
+    "Neurotoxin",
+    "AlterMin",
+}
 
 
 def test_canonical_preset_path_resolves():
@@ -49,10 +67,11 @@ def test_all_presets_load_and_validate():
         )
 
 
-def test_shared_attack_catalog_covers_registered_attacks():
+def test_shared_attack_catalog_matches_curated_defaults():
     payload = load_yaml_mapping(attacks_catalog_path())
     attack_names = {item["attack"] for item in payload["attacks"]}
-    assert attack_names == KNOWN_ATTACKS
+    assert attack_names == EXPECTED_SHARED_ATTACKS
+    assert attack_names <= KNOWN_ATTACKS
 
 
 def test_shared_defense_catalog_covers_registered_defenses():

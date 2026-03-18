@@ -18,7 +18,7 @@ class DBA(DPBase, Client):
     def __init__(self, args, worker_id, train_dataset, test_dataset):
         Client.__init__(self, args, worker_id, train_dataset, test_dataset)
         self.default_attack_params = {"attack_model": "all2one", "scaling_factor": 100, "trigger_factor": [
-            8, 2, 0], "poisoning_ratio": 0.32, "source_label": 2, "target_label": 7, "attack_strategy": "continuous", "single_epoch": 0, "poison_frequency": 5, "attack_start_epoch": None}
+            14, 2, 0], "poisoning_ratio": 0.32, "source_label": 2, "target_label": 7, "attack_strategy": "continuous", "single_epoch": 0, "poison_frequency": 5, "attack_start_epoch": None}
         self.update_and_set_attr()
         self.algorithm = "FedOpt"
         self.define_synthesizer()

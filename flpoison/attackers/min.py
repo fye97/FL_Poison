@@ -13,7 +13,7 @@ class MinBase(MPBase, Client):
     def __init__(self, args, worker_id, train_dataset, test_dataset):
         Client.__init__(self, args, worker_id, train_dataset, test_dataset)
         self.default_attack_params = {
-            'gamma_init': 10.0, 'stop_threshold': 1e-5}
+            'gamma_init': 10, 'stop_threshold': 1.0e-5}
         self.update_and_set_attr()
         self.algorithm = "FedSGD"
 

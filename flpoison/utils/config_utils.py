@@ -201,12 +201,18 @@ def validate_experiment_config(
     validate_named_entries(defenses, field="defense", source=source, allowed_names=known_defenses)
 
     active_attack = config.get("attack")
-    if active_attack and active_attack not in {item["attack"] for item in attacks or []}:
-        raise ValueError(f"default attack `{active_attack}` is not declared in {source}")
+    if active_attack:
+        declared_attacks = {item["attack"] for item in attacks or []}
+        allowed_attacks = set(known_attacks) if known_attacks is not None else declared_attacks
+        if active_attack not in allowed_attacks:
+            raise ValueError(f"unknown default attack `{active_attack}` in {source}")
 
     active_defense = config.get("defense")
-    if active_defense and active_defense not in {item["defense"] for item in defenses or []}:
-        raise ValueError(f"default defense `{active_defense}` is not declared in {source}")
+    if active_defense:
+        declared_defenses = {item["defense"] for item in defenses or []}
+        allowed_defenses = set(known_defenses) if known_defenses is not None else declared_defenses
+        if active_defense not in allowed_defenses:
+            raise ValueError(f"unknown default defense `{active_defense}` in {source}")
 
 
 def validate_named_entries(

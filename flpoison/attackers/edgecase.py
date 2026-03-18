@@ -36,7 +36,7 @@ class EdgeCase(MPBase, DPBase, Client):
         l2_proj_frequency: projection frequency
         """
         self.default_attack_params = {
-            "poisoning_ratio": 0.8, "epsilon": 0.25, "PGD_attack": True, "projection_type": "l_2", "l2_proj_frequency": 1, "scaling_attack": True, "scaling_factor": 50, "target_label": 1}
+            "poisoning_ratio": 0.5, "epsilon": 0.25, "PGD_attack": True, "projection_type": "l_2", "l2_proj_frequency": 1, "scaling_attack": True, "scaling_factor": 50, "target_label": 1}
         self.update_and_set_attr()
 
         self.define_synthesizer()

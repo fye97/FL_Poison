@@ -20,7 +20,7 @@ class IPM(MPBase, Client):
         Client.__init__(self, args, worker_id, train_dataset, test_dataset)
         # scale=0.1, 0.5, 1, 2, 100 all break FedAvg and GeometricMedian, small scale, such a 0.1, breaks Krum
         self.default_attack_params = {
-            'scaling_factor': 0.1, "attack_start_epoch": None}
+            'scaling_factor': 0.5, "attack_start_epoch": None}
         self.update_and_set_attr()
 
     def omniscient(self, clients):

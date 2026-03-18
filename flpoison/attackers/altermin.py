@@ -40,7 +40,7 @@ class AlterMin(MPBase, DPBase, Client):
         malicous_epochs: malicious training epochs
         """
         self.default_attack_params = {"attack_model": "targeted", "source_label": 3, "target_label": 7, "poisoned_sample_cnt": 1,
-                                      "boosting_factor": 10, "rho": 1e-4, "benign_epochs": 10, "malicous_epochs": 1}
+                                      "boosting_factor": 2, "rho": 1.0e-4, "benign_epochs": 10, "malicous_epochs": 5}
         self.update_and_set_attr()
         self.algorithm = "FedOpt"
         # initialize the synthesizer for data loader
