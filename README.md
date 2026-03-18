@@ -1,17 +1,62 @@
-# Welcome to FLPoison
+# FLPoison
 
-![Python Versions](https://img.shields.io/badge/Python-3.6%2B-blue)
+![Python Versions](https://img.shields.io/badge/Python-3.10%2B-blue)
 ![Framework](https://img.shields.io/badge/PyTorch-orange)
-![Last Commit](https://img.shields.io/github/last-commit/vio1etus/FLPoison)
+![Last Commit](https://img.shields.io/github/last-commit/fye97/FL_Poison)
 [![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html)
 
-<!-- ![Repo Size](https://img.shields.io/github/repo-size/vio1etus/FLPoison) -->
+FLPoison is a PyTorch-based federated learning poisoning framework for benchmarking attacks, defenses, and training setups across multiple datasets and FL algorithms. The codebase is now organized as a proper Python package under [`flpoison/`](flpoison), while keeping the root `main.py` and `batchrun.py` entrypoints for compatibility with existing workflows.
 
-Check the [Wiki](../../wiki#getting-started) to get started with the project.
+## Quick Start
 
-## Features
+Install the package in editable mode:
 
-PyTorch's implementation of poisoning attacks and defenses in federated learning.
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .
+```
+
+Run a single experiment:
+
+```bash
+python main.py --config configs/FedSGD_MNIST_Lenet.yaml
+```
+
+Or use the package entrypoint directly:
+
+```bash
+python -m flpoison --config configs/FedSGD_MNIST_Lenet.yaml
+```
+
+Run the test suite:
+
+```bash
+pytest -q tests
+```
+
+## Documentation
+
+- [User guide](docs/for-users.md)
+- [Configuration manual](docs/config-manual.md)
+- [Performance profiling guide](docs/performance-profiling.md)
+- [Project changelog](CHANGELOG.md)
+- [VitePress docs home](docs/index.md)
+
+## Project Layout
+
+- [`flpoison/fl`](flpoison/fl): training orchestration, algorithms, models, server/client runtime
+- [`flpoison/aggregators`](flpoison/aggregators): aggregation and defense implementations
+- [`flpoison/attackers`](flpoison/attackers): poisoning attacks, shared bases, and attack assets
+- [`flpoison/datapreprocessor`](flpoison/datapreprocessor): dataset loading, partitioning, and preprocessing
+- [`flpoison/utils`](flpoison/utils): configuration, logging, plotting, and profiling helpers
+- [`configs`](configs): experiment presets plus shared catalogs
+- [`tests`](tests): regression and profiling support tests
+- [`docs`](docs): user-facing documentation and profiling notes
+
+## Supported Scope
+
+PyTorch implementation of poisoning attacks and defenses in federated learning.
 
 |     **Category**      |                                                                                      **Details**                                                                                       |
 | :-------------------: | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------: |
@@ -99,6 +144,10 @@ Model poisoning attacks here, main untargeted attacks, refer to the attacks aime
 | Multi-Krum | [multikrum.py](flpoison/aggregators/multikrum.py) | [Machine Learning with Adversaries: Byzantine Tolerant Gradient Descent](https://papers.nips.cc/paper_files/paper/2017/hash/f4b9ec30ad9f68f89b29639786cb62ef-Abstract.html) - NeurIPS '17 | FedSGD | FedSGD, [FedOpt, FedAvg] |
 | Krum | [krum.py](flpoison/aggregators/krum.py) | [Machine Learning with Adversaries: Byzantine Tolerant Gradient Descent](https://papers.nips.cc/paper_files/paper/2017/hash/f4b9ec30ad9f68f89b29639786cb62ef-Abstract.html) - NeurIPS '17 | FedSGD | FedSGD, [FedOpt, FedAvg] |
 |SimpleClustering|[simpleclustering.py](flpoison/aggregators/simpleclustering.py)|Simple majority-based clustering| FedSGD, FedAvg, FedOpt|FedSGD, FedAvg, FedOpt|
+
+## Release Notes
+
+Recent architecture and packaging changes are tracked in [CHANGELOG.md](CHANGELOG.md). The latest update consolidates the runtime under the `flpoison` package, keeps CLI compatibility at the repository root, and hardens optional dependency handling for modules such as `FLAME`, `DeepSight`, and `EdgeCase`.
 
 ## Contributing
 
