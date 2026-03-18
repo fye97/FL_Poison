@@ -1,6 +1,9 @@
+import warnings
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
+import numpy as np
 import torch
 from PIL import Image
 from torchvision import transforms
@@ -9,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+import flpoison.datapreprocessor.data_utils as data_utils
 from flpoison.datapreprocessor.data_utils import Partition
 
 
@@ -23,6 +27,27 @@ class _ZeroOutSynthesizer:
     def backdoor_batch(self, image, labels, **kwargs):
         image.zero_()
         return image, labels
+
+
+class _FakeCIFARDataset:
+    def __init__(self, root, train, download, transform):
+        warnings.warn(
+            "dtype(): align should be passed as Python or NumPy boolean but got `align=0`. "
+            "Did you mean to pass a tuple to create a subarray type? (Deprecated NumPy 2.4)",
+            getattr(getattr(np, "exceptions", np), "VisibleDeprecationWarning", Warning),
+            stacklevel=2,
+        )
+        self.data = np.zeros((2, 32, 32, 3), dtype=np.uint8)
+        self.targets = [0, 1]
+        self.transform = transform
+
+
+class _FakeCIFARDatasetWithOtherWarning:
+    def __init__(self, root, train, download, transform):
+        warnings.warn("different warning", UserWarning, stacklevel=2)
+        self.data = np.zeros((1, 32, 32, 3), dtype=np.uint8)
+        self.targets = [0]
+        self.transform = transform
 
 
 def test_partition_caches_deterministic_tensor_transforms():
@@ -58,3 +83,37 @@ def test_partition_poison_does_not_mutate_cached_tensor():
 
     assert torch.count_nonzero(poisoned_image) == 0
     assert torch.allclose(partition.cached_data[0], cached_before)
+
+
+def test_load_data_suppresses_torchvision_cifar_numpy_warning(monkeypatch):
+    monkeypatch.setattr(data_utils.datasets, "CIFAR10", _FakeCIFARDataset)
+    args = SimpleNamespace(
+        dataset="CIFAR10",
+        model="resnet18",
+        mean=(0.4914, 0.4822, 0.4465),
+        std=(0.2470, 0.2430, 0.2610),
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        train_dataset, test_dataset = data_utils.load_data(args)
+
+    assert not any("align should be passed" in str(w.message) for w in caught)
+    assert torch.equal(train_dataset.targets, torch.tensor([0, 1]))
+    assert torch.equal(test_dataset.targets, torch.tensor([0, 1]))
+
+
+def test_load_data_keeps_unrelated_warnings_visible(monkeypatch):
+    monkeypatch.setattr(data_utils.datasets, "CIFAR10", _FakeCIFARDatasetWithOtherWarning)
+    args = SimpleNamespace(
+        dataset="CIFAR10",
+        model="resnet18",
+        mean=(0.4914, 0.4822, 0.4465),
+        std=(0.2470, 0.2430, 0.2610),
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        data_utils.load_data(args)
+
+    assert any(str(w.message) == "different warning" for w in caught)

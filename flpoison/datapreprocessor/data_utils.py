@@ -1,5 +1,7 @@
 import os
 import pickle
+import warnings
+from contextlib import contextmanager
 import numpy as np
 import torch
 from PIL import Image
@@ -11,6 +13,32 @@ from flpoison.datapreprocessor.chmnist import CHMNIST
 from flpoison.utils.plot_utils import plot_label_distribution
 from flpoison.datapreprocessor.tinyimagenet import TinyImageNet
 from flpoison.datapreprocessor.har import HAR
+
+
+_VISIBLE_DEPRECATION_WARNING = getattr(
+    getattr(np, "exceptions", np),
+    "VisibleDeprecationWarning",
+    Warning,
+)
+_CIFAR_NUMPY_ALIGN_WARNING = (
+    r"dtype\(\): align should be passed as Python or NumPy boolean but got `align=0`.*"
+)
+
+
+@contextmanager
+def suppress_torchvision_cifar_pickle_warning(dataset_name):
+    """Silence the NumPy 2.4 deprecation emitted when torchvision unpickles CIFAR batches."""
+    if dataset_name not in {"CIFAR10", "CIFAR100"}:
+        yield
+        return
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=_CIFAR_NUMPY_ALIGN_WARNING,
+            category=_VISIBLE_DEPRECATION_WARNING,
+        )
+        yield
 
 
 def load_data(args):
@@ -30,10 +58,11 @@ def load_data(args):
             data_directory, split="digits", train=False, transform=test_trans)
     elif args.dataset in ["MNIST", "FashionMNIST", "CIFAR10", "CIFAR100"]:
         trans, test_trans = get_transform(args)
-        train_dataset = eval(f"datasets.{args.dataset}")(root=data_directory, train=True,
-                                                         download=True, transform=trans)
-        test_dataset = eval(f"datasets.{args.dataset}")(root=data_directory, train=False,
-                                                        download=True, transform=test_trans)
+        with suppress_torchvision_cifar_pickle_warning(args.dataset):
+            train_dataset = eval(f"datasets.{args.dataset}")(root=data_directory, train=True,
+                                                             download=True, transform=trans)
+            test_dataset = eval(f"datasets.{args.dataset}")(root=data_directory, train=False,
+                                                            download=True, transform=test_trans)
     elif args.dataset in ["CHMNIST", "CINIC10", "TinyImageNet"]:
         """
         dataset in custom datasets, such as CHMNIST, CINIC10, TinyImageNet

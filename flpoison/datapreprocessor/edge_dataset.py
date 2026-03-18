@@ -7,7 +7,7 @@ import rarfile
 import torch
 from torchvision import datasets
 
-from .data_utils import Partition, get_transform
+from .data_utils import Partition, get_transform, suppress_torchvision_cifar_pickle_warning
 
 
 class EdgeDataset():
@@ -151,8 +151,9 @@ class SouthwestAirline():
             [self.target_label] * len(self.test_images))
 
         test_trans = get_transform(self.args)[1]
-        test_dataset = datasets.CIFAR10(
-            './data', train=False, download=False, transform=test_trans)
+        with suppress_torchvision_cifar_pickle_warning("CIFAR10"):
+            test_dataset = datasets.CIFAR10(
+                './data', train=False, download=False, transform=test_trans)
         test_dataset.data, test_dataset.targets = self.test_images, self.test_labels
         return test_dataset
 
