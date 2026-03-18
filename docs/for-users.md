@@ -1,30 +1,29 @@
 ---
-title: 快速上手
-description: 安装、运行实验、覆盖配置参数与 benchmark 模式说明。
+title: 用户使用手册
+description: 安装环境、运行单个 FL 训练，以及在本地或 Compute Canada 上批量运行实验。
 outline: [2, 3]
 ---
 
-# 快速上手 / For Users
-For people who just want to run and use it.
+# 用户使用手册
 
-## Getting Started
+这份手册面向想直接运行 FLPoison 的用户，覆盖三类常见流程：
 
-### Installation
-There are no strict version requirements beyond Python >= 3.10. The project uses `pyproject.toml` and supports `uv`.
+1. 运行单个 FL 训练任务
+2. 在本地机器上批量运行实验矩阵
+3. 在 Compute Canada 的 Slurm 机器上批量提交实验
 
-Install Python and create a virtual environment:
+当前仓库里仍保留了根目录的 `batchrun.py` 作为兼容入口，但新的批量实验流程推荐统一使用 `exps/` 目录下的 spec 驱动脚本。
+
+## 环境准备
+
+项目要求 Python 3.10 及以上。推荐先创建虚拟环境，再以 editable 模式安装：
 
 ```bash
 uv venv
-```
-
-Install dependencies from `pyproject.toml`:
-
-```bash
 uv pip install -e .
 ```
 
-If you are not using `uv`, you can still use `pip`:
+如果你不用 `uv`，也可以使用标准 `venv`：
 
 ```bash
 python -m venv .venv
@@ -32,11 +31,9 @@ source .venv/bin/activate
 pip install -e .
 ```
 
-Notes:
-1. PyTorch and CUDA-related packages are pinned in `pyproject.toml`. If you need a CPU-only setup, remove the CUDA packages and adjust the `torch`/`torchvision` pins.
-2. For `unrar`, you may need a system package if the EdgeCase backdoor attack fails to extract archives.
+如果你需要运行 `EdgeCase` 一类依赖压缩包解压的数据流程，可能还需要系统里的 `unrar`：
 
-Linux (Ubuntu):
+Ubuntu:
 
 ```bash
 sudo apt install unrar
@@ -45,106 +42,379 @@ sudo apt install unrar
 macOS:
 
 ```bash
-sudo brew install unrar
+brew install unrar
 ```
 
-### Recommended Hardware
-CPU-intensive, GPU memory-intensive, and FP32 operation-heavy hardware configurations are recommended for the benchmark experiment. A machine with 16+ CPU cores (for example, Intel Xeon Gold 6226R, Platinum 8352V, 8377C, AMD EPYC 7T83), 60GB+ memory, and GPUs with 24GB+ memory each with good FP32 performance (for example, NVIDIA 3090, A40, 4090, L20, L40s, L40) is ideal. These configurations ensure the experiment runs efficiently on a single machine.
+## 运行单个 FL 训练
 
-## Simple Usage
-The `./configs` folder keeps runnable presets at the top level. Shared attack, defense, and dataset metadata live in `configs/presets/attacks.yaml`, `configs/presets/defenses.yaml`, and `configs/presets/datasets.yaml`.
+### 选择配置文件
 
-For example, to run FedSGD on MNIST with LeNet:
+单次训练直接从 `configs/` 下的实验配置启动。
+
+- `configs/*.yaml` 是可直接运行的实验 preset
+- `configs/presets/attacks.yaml`、`configs/presets/defenses.yaml`、`configs/presets/datasets.yaml` 存放共享元数据
+
+例如：
+
+- `configs/FedSGD_MNIST_Lenet.yaml`
+- `configs/FedAvg_CIFAR10_Resnet18.yaml`
+- `configs/FedAvg_HAR_Fcn.yaml`
+
+### 最短运行命令
 
 ```bash
-python main.py -config=./configs/FedSGD_MNIST_Lenet.yaml
+python main.py --config configs/FedSGD_MNIST_Lenet.yaml
 ```
 
-### Run A Specific Attack Or Defense
-Specify the attack and defense method in the configuration file. The corresponding attack or defense parameters in `attacks` or `defenses` are used if `attack_params` or `defense_params` is not specified. If the selected attack or defense is not listed in the shared preset, the runtime falls back to the implementation defaults.
+等价写法：
 
-Example:
+```bash
+python -m flpoison --config configs/FedSGD_MNIST_Lenet.yaml
+```
+
+这会读取 YAML 配置，完成数据集加载、客户端划分、训练、评估和日志输出。
+
+### 命令行覆盖配置
+
+你可以在 YAML 的基础上，通过命令行覆盖常用参数，例如训练轮数、攻击、防御、学习率、客户端数量等：
+
+```bash
+python main.py \
+  --config configs/FedSGD_MNIST_Lenet.yaml \
+  --epochs 10 \
+  --attack MinSum \
+  --defense Krum \
+  --num_adv 0.2 \
+  --learning_rate 0.005
+```
+
+也可以直接切换数据划分、模型或随机种子：
+
+```bash
+python main.py \
+  --config configs/FedSGD_MNIST_Lenet.yaml \
+  --distribution non-iid \
+  --dirichlet_alpha 0.1 \
+  --model lenet \
+  --seed 123
+```
+
+如果要覆盖攻击或防御的参数对象，需要整体传入该参数对象，而不是只改其中一个字段：
+
+```bash
+python main.py \
+  --config configs/FedSGD_MNIST_Lenet.yaml \
+  --attack IPM \
+  --attack_params "{'scaling_factor': 0.5}"
+```
+
+如果你只覆盖 `--attack` 或 `--defense`，但没有额外提供 `--attack_params` 或 `--defense_params`，运行时会优先从共享 preset 里查找对应默认参数；找不到时回退到实现内部默认值。
+
+### 输出文件在哪里
+
+如果不显式指定 `--output`，单次训练默认把结果写到：
+
+```text
+./logs/{algorithm}/{dataset}_{model}/{distribution}/{dataset}_{model}_{distribution}_{attack}_{defense}_{epochs}_{num_clients}_{learning_rate}_{algorithm}.txt
+```
+
+例如：
+
+```text
+./logs/FedSGD/MNIST_lenet/iid/MNIST_lenet_iid_NoAttack_Mean_300_50_0.01_FedSGD.txt
+```
+
+你也可以自己指定输出文件：
+
+```bash
+python main.py \
+  --config configs/FedSGD_MNIST_Lenet.yaml \
+  --output logs/manual_runs/mnist_smoke.txt
+```
+
+### 重复运行多个 seed
+
+单次入口本身也支持重复实验：
+
+```bash
+python main.py \
+  --config configs/FedSGD_MNIST_Lenet.yaml \
+  --num_experiments 3 \
+  --experiment_id 0
+```
+
+运行时会自动调整 `seed` 和输出文件名中的 `exp{}` / `seed{}` 标记，避免不同重复实验互相覆盖。
+
+### 什么时候用单次入口
+
+下面这些情况适合直接用 `main.py`：
+
+- 你只想跑一个配置文件
+- 你正在调试某个 attack / defense / dataset 组合
+- 你想先确认配置本身能否正常训练，再扩展成批量实验
+
+完整参数说明见 [配置手册](/config-manual)。
+
+## 批量运行总览
+
+推荐使用 `exps/` 目录下的 spec 驱动流程：
+
+- `exps/specs/*.yaml`: 实验矩阵定义
+- `exps/run_local.sh`: 本地批量运行入口
+- `exps/run_cc.sh`: Compute Canada / Slurm 提交入口
+- `exps/launch.py`: 后端实现，支持 `list`、`plan`、`local`、`cc`
+
+建议按下面顺序使用：
+
+1. 列出可用 spec
+2. 用 `plan` 查看任务矩阵大小
+3. 先跑一个很小的本地 smoke test
+4. 再决定是在本地批量跑，还是提交到 Compute Canada
+
+### 查看可用 spec
+
+```bash
+python exps/launch.py list
+```
+
+### 查看某个 spec 会展开成多少 task
+
+```bash
+python exps/launch.py plan smoke_mnist
+python exps/launch.py plan cifar10
+```
+
+这里的 `spec` 既可以写名字，也可以写路径，例如：
+
+```bash
+python exps/launch.py plan exps/specs/smoke_mnist.yaml
+```
+
+### spec 文件长什么样
+
+批量实验由 `exps/specs/*.yaml` 描述，一个典型 spec 包含以下部分：
 
 ```yaml
-attack: IPM
-attack_params:
-  scaling_factor: 0.5
-defense: Mean
+name: cifar10
+
+scenarios:
+  - algorithm: FedAvg
+    dataset: CIFAR10
+
+matrix:
+  distributions:
+    - type: iid
+    - type: non-iid
+      dirichlet_alpha: 0.1
+  attacks:
+    - NoAttack
+    - MinSum
+  defenses:
+    - Mean
+    - FLTrust
+  num_advs:
+    - 0.2
+  models:
+    - vgg19
+  epochs:
+    - 200
+  num_clients:
+    - 20
+  learning_rates:
+    - 0.05
+  seeds:
+    - 42
+
+repeats:
+  count: 5
+  start: 0
+
+runtime:
+  gpu_idx: 0
+  num_workers: 4
+  require_cuda: true
+
+slurm:
+  account: def-yourgroup
+  time: 0-12:00:00
+  gpus: nvidia_h100_80gb_hbm3_2g.20gb:1
+  cpus_per_task: 8
+  mem: 64G
+  array_parallel: 3
 ```
 
-Then run:
+字段含义可以先按下面理解：
+
+- `scenarios`: 基础场景，定义算法、数据集和可选的基础 config
+- `matrix`: 要 sweep 的维度，最终会展开成 task 网格
+- `repeats`: 每个组合重复多少次；会自动映射到不同 `experiment_id` 和有效 seed
+- `runtime`: 本地或 worker 运行时设置，例如 `gpu_idx`、`num_workers`、是否强制 CUDA
+- `slurm`: 只有走 Slurm 提交时才会用到的资源申请参数
+
+如果某个 `matrix` 字段省略，launcher 会回退到对应 config 文件里的默认值。
+
+## 本地批量运行
+
+### 推荐流程
+
+先做一个 smoke test：
 
 ```bash
-python main.py -config=./configs/FedSGD_MNIST_Lenet.yaml
+python exps/launch.py plan smoke_mnist
+./exps/run_local.sh smoke_mnist --ids 0 --jobs 1
 ```
 
-### Override Parameters With Command Line Arguments
-You can override any parameter in the configuration file with command line arguments. For attack or defense parameters, you need to override the whole parameter object rather than part of it.
+确认 smoke test 没问题后，再扩大任务范围：
 
 ```bash
-python main.py -config=./configs/FedSGD_MNIST_Lenet.yaml -attack_params="{'scaling_factor': 0.5}"
+./exps/run_local.sh cifar10 --ids 0-7 --jobs 2 --gpu-tokens 1
+./exps/run_local.sh cifar10 --ids 0-31 --jobs 1 --resume
 ```
 
-If you only override `attack` or `defense` without overriding their parameters, the runtime first looks for matching entries in the shared preset and otherwise falls back to the implementation defaults.
+`run_local.sh` 实际调用的是：
 
 ```bash
-python main.py -config=./configs/FedSGD_MNIST_Lenet.yaml -attack=MinSum
+python exps/launch.py local <spec> ...
 ```
 
-You can also override other parameters with `-model`, `-data`, `-num_clients`, `-num_adv`, `-bs`, `-lr`, `lr_scheduler`, and so on.
+### 常用参数
 
-### Benchmark Mode
-To run the benchmark experiment with one thread and process, use `-b`:
+- `--ids 0-7` 或 `--ids 0,3,8-10`: 只运行部分 task
+- `--jobs N`: 同时启动的本地 worker 数
+- `--cuda 0`: 设置 `CUDA_VISIBLE_DEVICES`
+- `--gpu-tokens N`: 用文件锁限制同时占用 GPU 的 worker 数
+- `--resume`: 跳过已经成功结束的 task
+- `--dry-run`: 只生成 runner 日志，不真正启动 worker
+- `--stop-on-fail`: 遇到第一个失败任务就停止
+- `--log-dir <path>`: 修改本地 runner 日志目录
+
+### 输出位置
+
+本地批量运行会产生两类输出：
+
+- 实验结果：`logs/local_runs/...`
+- runner 日志：`logs/local_array/...`
+
+`logs/local_array/` 里每个 task 会有一个单独的 `*.out` 文件，记录该 task 的启动命令、开始时间、退出码和 worker 输出。
+
+实验结果文件名会包含数据集、模型、攻击、防御、seed 和 experiment id，便于后续筛选和汇总。
+
+### 本地运行时的默认行为
+
+- 如果本地检测不到 CUDA，launcher 默认允许回退到 CPU 或 MPS
+- 如果 spec 里写了 `runtime.require_cuda: true`，本地也会强制要求 CUDA
+- `run_local.sh` 会优先使用 `PYTHON_BIN`，否则尝试仓库下的 `.venv/bin/python`
+
+## 在 Compute Canada / Slurm 上批量运行
+
+### 提交前先检查 spec
+
+在 Compute Canada 上提交前，至少检查 `slurm` 段里的这些字段：
+
+- `account`
+- `time`
+- `gpus`
+- `cpus_per_task`
+- `mem`
+- `array_parallel`
+- `mail_user`
+- `mail_type`
+
+一个最小可用流程通常是：
+
+1. 把仓库放到集群环境中
+2. 创建虚拟环境并安装依赖
+3. 根据账号和资源队列修改 spec 里的 `slurm` 参数
+4. 先做一次 `--dry-run`
+5. 再正式 `sbatch` 提交
+
+### 先 dry run 看 sbatch 命令
 
 ```bash
-python main.py -config=./configs/FedSGD_MNIST_Lenet.yaml -b=True
+./exps/run_cc.sh smoke_mnist --chunk-size 1 --dry-run
 ```
 
-To run multiple experiments in parallel, use `batchrun.py`. For example:
+### 正式提交
 
 ```bash
-python batchrun.py -algorithms FedSGD -data MNIST -model lenet -distributions non-iid -attacks MinMax MinSum -defenses Krum Median -gidx 1 -maxp 3
+./exps/run_cc.sh cifar10 --chunk-size 32
+./exps/run_cc.sh cifar10 --start-id 0 --end-id 63 --chunk-size 16
 ```
 
-The above command trains LeNet-5 on MNIST with non-IID data partition on the FedSGD algorithm, and iteratively runs MinMax and MinSum with Krum and Median (4 experiments in total), using GPU index 1 with 3 parallel processes. It uses the default training, attack, and defense settings in the corresponding preset file `configs/{FL algorithm}_{dataset}_{model}.yaml`.
-
-## Parameters Setting
-Two parameter passing methods are supported: command line options and configuration files.
-
-For the full parameter matrix, defaults, and attack or defense options, see [config-manual.md](/config-manual).
-
-### Command Line Options
-There are two uses for command line options. You can use them to run the program and to override default parameters in configuration files.
-
-### Configuration Files
-YAML is used for parameter storage. The parameters should be stored in the `configs` folder as `.yaml` files.
-
-We provide two types of configuration:
-1. Shared configuration: `configs/presets/attacks.yaml`, `configs/presets/defenses.yaml`, `configs/presets/datasets.yaml`
-2. Experiment configuration: `configs/{FL algorithm}_{dataset}_{model}.yaml`
-
-`./configs/presets/datasets.yaml` stores dataset metadata such as channels, class counts, normalization statistics, and feature dimensions.
-
-`./configs/FedSGD_MNIST_Lenet.yaml` is the canonical preset for the FedSGD algorithm on the MNIST dataset with the default LeNet model. You can modify parameters in this file and customize the training defaults. Shared attack and defense registries are loaded from `configs/presets/attacks.yaml` and `configs/presets/defenses.yaml`.
-
-## HAR (UCI Human Activity Recognition)
-This repo includes a loader for the UCI HAR dataset (`dataset: HAR`) and a simple vector MLP (`model: mlp`).
-
-1) Either set `download: True` (auto download from the official UCI URL), or download/extract the dataset under `./data/` so one of these exists:
-- `./data/UCI HAR Dataset/train/X_train.txt`
-- `./data/UCI_HAR_Dataset/train/X_train.txt`
-
-2) Run the example config:
+`run_cc.sh` 实际调用的是：
 
 ```bash
-python main.py -config=./configs/FedAvg_HAR_Fcn.yaml
+python exps/launch.py cc <spec> ...
 ```
 
-## Key Points When Using FLPoison
-Attack inheritance: `DPBase` should appear before `Client`, like `class A(DPBase, Client)`. This ensures that `A` uses the `DPBase.client_test()` method via inheritance.
+### 常用参数
 
-## For Developers
-Check out the documentation and source code for further development.
+- `--chunk-size N`: 每次 `sbatch` 提交包含多少个 task id
+- `--array-parallel N`: 覆盖 `spec.slurm.array_parallel`
+- `--start-id N --end-id M`: 只提交矩阵中的一段任务
+- `--sbatch-arg=...`: 追加额外 `sbatch` 参数，例如 `--sbatch-arg=--qos=high`
+- `--dry-run`: 只打印命令，不真正提交
 
-## Performance Profiling
-For the profiling workflow, baseline scripts, output files, and metric interpretation, see [performance-profiling.md](/performance-profiling).
+### Compute Canada 运行时的默认行为
+
+- Compute Canada worker 默认要求 CUDA 可用
+- 如果 spec 没显式设置 `runtime.require_cuda`，在 Slurm 环境里默认会按 `true` 处理
+- 如果节点上暂时拿不到可用 CUDA，worker 会按 runtime 里的重试和 requeue 策略处理
+
+### Compute Canada 上的数据与结果目录
+
+批量 worker 会按下面顺序寻找数据目录：
+
+1. `DATA_SRC_ROOT`
+2. `$SCRATCH/FL_Poison/data`
+3. `$PROJECT/FL_Poison/data`
+4. `<repo>/data`
+
+训练结果默认写到：
+
+- `$SCRATCH/FL_Poison/logs/...`
+
+如果没有 `SCRATCH`，则回退到：
+
+- `~/scratch/FL_Poison/logs/...`
+
+Slurm 的 stdout / stderr 默认写到仓库里的：
+
+- `logs/slurm/%x_%A_%a.out`
+- `logs/slurm/%x_%A_%a.err`
+
+如果节点提供了 `SLURM_TMPDIR`，worker 会把代码和对应数据集先拷到本地临时盘运行，任务结束后再把结果同步回最终日志目录。这通常比直接在共享文件系统上跑更稳。
+
+## 常用环境变量
+
+如果你需要定制运行环境，可以使用这些环境变量：
+
+- `PYTHON_BIN`: 显式指定 Python 解释器
+- `CODE_SRC_ROOT`: 指定代码根目录
+- `DATA_SRC_ROOT`: 指定数据源目录
+- `RESULT_ROOT`: 覆盖结果输出根目录
+
+这几个变量对本地批量和 Compute Canada 批量流程都生效。
+
+## 兼容旧批量入口
+
+根目录的 `batchrun.py` 仍可用，但它属于旧式批量脚本，更适合兼容已有命令而不是组织新实验。新的实验矩阵、任务拆分、`plan` 预览和 Slurm 提交流程，建议统一使用 `exps/` 下的 spec 驱动入口。
+
+如果你只是想快速看一个旧命令长什么样，示例如下：
+
+```bash
+python batchrun.py \
+  --algorithms FedSGD \
+  --dataset MNIST \
+  --model lenet \
+  --distributions non-iid \
+  --attacks MinMax MinSum \
+  --defenses Krum Median \
+  --gpu_idx 1 \
+  --max_processes 3
+```
+
+## 进一步阅读
+
+- [配置手册](/config-manual)
+- [性能 Profiling](/performance-profiling)

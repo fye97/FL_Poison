@@ -11,14 +11,14 @@ export default defineConfig({
   base,
   lang: 'zh-CN',
   title: 'FLPoison',
-  description: 'FLPoison 文档站点：快速上手、配置手册与性能剖析。',
+  description: 'FLPoison 文档站点：用户手册、配置手册与性能剖析。',
   cleanUrls: true,
   lastUpdated: true,
   head: [['meta', { name: 'theme-color', content: '#0f766e' }]],
   themeConfig: {
     nav: [
       { text: '首页', link: '/' },
-      { text: '快速上手', link: '/for-users' },
+      { text: '用户手册', link: '/for-users' },
       { text: '配置手册', link: '/config-manual' },
       { text: '性能剖析', link: '/performance-profiling' },
       { text: 'GitHub', link: githubLink },
@@ -28,7 +28,7 @@ export default defineConfig({
         text: '文档',
         items: [
           { text: '首页', link: '/' },
-          { text: '快速上手', link: '/for-users' },
+          { text: '用户手册', link: '/for-users' },
           { text: '配置手册', link: '/config-manual' },
           { text: '性能剖析', link: '/performance-profiling' },
         ],
