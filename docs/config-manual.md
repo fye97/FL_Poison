@@ -506,7 +506,7 @@ defenses:
 - `--attack_params` 和 `--defense_params` 需要传 Python 字典字符串，代码用 `ast.literal_eval()` 解析。
 - `--log_color` 使用 `BooleanOptionalAction`，所以既支持 `--log_color`，也支持 `--no-log_color`。
 - `--cudnn_benchmark` / `--allow_tf32` 也使用 `BooleanOptionalAction`，因此都同时支持 `--no-*` 形式。
-- 单短横线长参数会被规范化，例如 `-experiment_id=3` 会被自动转成 `--experiment_id=3`。
+- CLI 只保留规范的双短横线参数形式，例如 `--experiment_id=3`。
 
 ### 示例
 

@@ -807,44 +807,44 @@ def task_command(
         "-u",
         "-m",
         "flpoison",
-        f"-config={config_path}",
-        "-alg",
+        f"--config={config_path}",
+        "--algorithm",
         task.algorithm,
-        "-data",
+        "--dataset",
         task.dataset,
-        "-dtb",
+        "--distribution",
         task.distribution,
-        "-model",
+        "--model",
         task.model,
-        "-e",
+        "--epochs",
         task.epochs,
-        "-num_clients",
+        "--num_clients",
         task.num_clients,
-        "-lr",
+        "--learning_rate",
         task.learning_rate,
-        "-num_adv",
+        "--num_adv",
         task.num_adv,
-        "-seed",
+        "--seed",
         str(task.seed_base),
         "--num_experiments",
         "1",
         "--experiment_id",
         str(task.experiment_id),
-        "-attack",
+        "--attack",
         task.attack,
-        "-defense",
+        "--defense",
         task.defense,
-        "-gidx",
+        "--gpu_idx",
         str(runtime.gpu_idx),
-        "-o",
+        "--output",
         str(output_file),
     ]
     if task.distribution == "non-iid" and task.dirichlet_alpha:
-        cmd.extend(["-dirichlet_alpha", task.dirichlet_alpha])
+        cmd.extend(["--dirichlet_alpha", task.dirichlet_alpha])
     if task.distribution == "class-imbalanced_iid" and task.im_iid_gamma:
-        cmd.extend(["-im_iid_gamma", task.im_iid_gamma])
+        cmd.extend(["--im_iid_gamma", task.im_iid_gamma])
     if runtime.num_workers is not None:
-        cmd.extend(["-num_workers", str(runtime.num_workers)])
+        cmd.extend(["--num_workers", str(runtime.num_workers)])
     return cmd
 
 

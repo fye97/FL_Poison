@@ -139,7 +139,13 @@ def main(args):
                         num_clients, epoch, learning_rate = get_configs(
                             dataset, algorithm, distribution, defense)
 
-                        command = f'python -u -m flpoison -config=./{config_file} -data {dataset} -model {model} -e {epoch} -att {attack} -def {defense} -dtb {distribution} -alg {algorithm} -lr {learning_rate} -gidx {gpu_idx}'
+                        command = (
+                            f"python -u -m flpoison --config=./{config_file} "
+                            f"--dataset {dataset} --model {model} --epochs {epoch} "
+                            f"--attack {attack} --defense {defense} "
+                            f"--distribution {distribution} --algorithm {algorithm} "
+                            f"--learning_rate {learning_rate} --gpu_idx {gpu_idx}"
+                        )
                         file_name = f'{repo_dir}/logs/{algorithm}/{dataset}_{model}/{distribution}/{dataset}_{model}_{distribution}_{attack}_{defense}_{epoch}_{num_clients}_{learning_rate}_{algorithm}.txt'
 
                         # Add the task to the list
@@ -172,32 +178,28 @@ def main_entry():
     )
 
     parser.add_argument(
-        '-distributions',
         '--distributions',
         nargs='+',
         default=['iid', 'non-iid'],
         help="List of distributions to use. Default is ['iid'].",
     )
     parser.add_argument(
-        '-algorithms',
         '--algorithms',
         nargs='+',
         default=['FedSGD', 'FedOpt'],
         help="List of algorithm types to use. Default is ['FedSGD'].",
     )
-    parser.add_argument('-data', '--dataset', type=str, default='MNIST', help="Dataset to use. Default is MNIST.")
-    parser.add_argument('-model', '--model', type=str, default='lenet', help="Model to use. Default is lenet.")
-    parser.add_argument('-gidx', '--gpu_idx', type=int, default=1, help="GPU index to use. Default is 1.")
-    parser.add_argument('-maxp', '--max_processes', type=int, default=6, help="Max number of process parallel. Default is 6.")
+    parser.add_argument('--dataset', type=str, default='MNIST', help="Dataset to use. Default is MNIST.")
+    parser.add_argument('--model', type=str, default='lenet', help="Model to use. Default is lenet.")
+    parser.add_argument('--gpu_idx', type=int, default=1, help="GPU index to use. Default is 1.")
+    parser.add_argument('--max_processes', type=int, default=6, help="Max number of process parallel. Default is 6.")
     parser.add_argument(
-        '-attacks',
         '--attacks',
         nargs='+',
         default=['NoAttack', 'Gaussian', 'SignFlipping', 'IPM', 'ALIE', 'FangAttack', 'MinMax', 'MinSum', 'Mimic', 'LabelFlipping', 'BadNets', 'ModelReplacement', 'DBA', 'AlterMin', 'EdgeCase', 'Neurotoxin'],
         help="List of attacks to use.",
     )
     parser.add_argument(
-        '-defenses',
         '--defenses',
         nargs='+',
         default=['Mean', 'SimpleClustering', 'Krum', 'MultiKrum', 'TrimmedMean', 'Median', 'Bulyan', 'RFA', 'FLTrust', 'CenteredClipping', 'DnC', 'Bucketing', 'SignGuard', 'TriGuardFL', 'LASA', 'Auror', 'FoolsGold', 'NormClipping', 'CRFL', 'DeepSight', 'FLAME'],

@@ -288,7 +288,7 @@ def main(args, cli_args):
         start_experiment_id = 0 if start_experiment_id is None else int(start_experiment_id)
 
         if not hasattr(args, "seed") or args.seed is None:
-            raise ValueError("Missing seed. Set `seed` in YAML or pass `-seed`/`--seed` on CLI.")
+            raise ValueError("Missing seed. Set `seed` in YAML or pass `--seed` on CLI.")
 
         seed_start = int(args.seed)
         base_output = args.output
