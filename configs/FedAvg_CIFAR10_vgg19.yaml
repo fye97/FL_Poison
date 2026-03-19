@@ -2,7 +2,7 @@ seed: 42
 num_experiments: 1
 experiment_id: 0
 
-epochs: 300
+epochs: 200
 algorithm: FedAvg
 optimizer: SGD
 momentum: 0.9
