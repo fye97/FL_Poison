@@ -1,7 +1,9 @@
-from flpoison.aggregators.aggregatorbase import AggregatorBase
-from flpoison.aggregators.aggregator_utils import L2_distances, krum_compute_scores
 import numpy as np
+import torch
+
 from flpoison.aggregators import aggregator_registry
+from flpoison.aggregators.aggregatorbase import AggregatorBase
+from flpoison.aggregators.krum import krum_scores
 
 
 @aggregator_registry
@@ -11,6 +13,7 @@ class MultiKrum(AggregatorBase):
 
     Multi-Krum is a variant of Krum that selects the m updates with the smallest scores, rather than just the single update chosen by Krum, where the score is the sum of the n-f-1 smallest Euclidean distances to the other updates. Then it verages these selected updates to produce the final aggregated update.
     """
+    supports_torch_updates = True
 
     def __init__(self, args, **kwargs):
         super().__init__(args)
@@ -30,13 +33,16 @@ class MultiKrum(AggregatorBase):
                     f"num_byzantine should be meet 2f+2 < n, got 2*{self.args.num_adv}+2 >= {num_clients}."
                 )
         with self.profile_substage("defense"):
-            distances = L2_distances(updates)
-            scores = [(i, krum_compute_scores(distances, i, num_clients, self.args.num_adv))
-                      for i in range(num_clients)]
-            sorted_scores = sorted(scores, key=lambda x: x[1])
-            selected_updates = updates[[sorted_scores[idx][0]
-                                        for idx in range(m_avg)]]
+            scores = krum_scores(updates, self.args.num_adv)
+            if torch.is_tensor(updates):
+                selected_idx = torch.argsort(scores)[:m_avg]
+                selected_updates = updates.index_select(0, selected_idx)
+            else:
+                selected_idx = np.argsort(scores)[:m_avg]
+                selected_updates = updates[selected_idx]
         with self.profile_substage("aggregate"):
+            if torch.is_tensor(selected_updates):
+                return torch.mean(selected_updates, dim=0)
             return np.mean(selected_updates, axis=0)
 
 
@@ -51,11 +57,9 @@ def multi_krum(updates, num_byzantine, avg_percentage, enable_check=False):
             raise ValueError(
                 f"num_byzantine should be meet 2f+2 < n, got 2*{num_byzantine}+2 >= {num_clients}."
             )
-    # calculate euclidean distance between clients
-    distances = L2_distances(updates)
-    # calculate client i's score
-    scores = [(i, krum_compute_scores(distances, i, num_clients, num_byzantine))
-              for i in range(num_clients)]
-    # sort index of client according to score
-    sorted_scores = sorted(scores, key=lambda x: x[1])
-    return np.mean(updates[[sorted_scores[idx][0] for idx in range(m_avg)]], axis=0)
+    scores = krum_scores(updates, num_byzantine)
+    if torch.is_tensor(updates):
+        selected_idx = torch.argsort(scores)[:m_avg]
+        return torch.mean(updates.index_select(0, selected_idx), dim=0)
+    selected_idx = np.argsort(scores)[:m_avg]
+    return np.mean(updates[selected_idx], axis=0)
