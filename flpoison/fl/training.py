@@ -4,6 +4,7 @@ import re
 import time
 from pathlib import Path
 
+import torch
 from tqdm import tqdm
 
 from flpoison.fl import coordinator
@@ -47,6 +48,20 @@ def _output_with_experiment_id(base_output: str, seed: int, experiment_id: int) 
     return str(p.with_name(stem))
 
 
+def configure_torch_runtime(args):
+    device = getattr(args, "device", None)
+    use_cuda_runtime = getattr(device, "type", None) == "cuda" and torch.cuda.is_available()
+
+    cudnn_benchmark = bool(getattr(args, "cudnn_benchmark", False)) and use_cuda_runtime
+    allow_tf32 = bool(getattr(args, "allow_tf32", False)) and use_cuda_runtime
+
+    torch.backends.cudnn.benchmark = cudnn_benchmark
+    if hasattr(torch.backends.cudnn, "allow_tf32"):
+        torch.backends.cudnn.allow_tf32 = allow_tf32
+    if hasattr(torch.backends, "cuda") and hasattr(torch.backends.cuda, "matmul"):
+        torch.backends.cuda.matmul.allow_tf32 = allow_tf32
+
+
 def fl_run(args):
     """
     function to run federated learning logics
@@ -60,6 +75,7 @@ def fl_run(args):
     print_filtered_args(args, args.logger)
     runtime_profiler = RuntimeProfiler(
         args, args.logger, args.output) if args.record_time else None
+    configure_torch_runtime(args)
     if runtime_profiler is not None:
         runtime_profiler.log_system_info()
     start_time = time.time()
@@ -279,7 +295,6 @@ def main(args, cli_args):
             # best-effort cleanup between experiments to reduce memory pressure
             gc.collect()
             try:
-                import torch
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
             except Exception:

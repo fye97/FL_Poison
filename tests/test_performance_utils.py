@@ -34,6 +34,8 @@ def build_args():
         num_workers=0,
         eval_interval=1,
         gpu_sample_interval_ms=50,
+        cudnn_benchmark=True,
+        allow_tf32=False,
         torch_profile=False,
     )
 
@@ -69,6 +71,8 @@ def test_runtime_profiler_writes_summary_json(tmp_path):
     assert payload["overall"]["final_train_accuracy"] == pytest.approx(0.8)
     assert payload["overall"]["final_train_samples"] == 64
     assert payload["overall"]["final_test_metrics"]["Test Acc"] == pytest.approx(0.75)
+    assert payload["metadata"]["cudnn_benchmark"] is True
+    assert payload["metadata"]["allow_tf32"] is False
     assert payload["rounds"][0]["stage_times"]["defense"] == pytest.approx(0.05)
     assert payload["rounds"][0]["stage_times"]["aggregate"] == pytest.approx(0.03)
     assert payload["rounds"][0]["round_time_sec"] == pytest.approx(0.50)

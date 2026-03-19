@@ -129,6 +129,8 @@ def test_print_filtered_args_formats_sectioned_summary(tmp_path):
         gpu_idx=[0],
         log_stream=True,
         log_color="auto",
+        cudnn_benchmark=True,
+        allow_tf32=False,
         output="logs/example.txt",
         logger=logger,
     )
@@ -143,4 +145,6 @@ def test_print_filtered_args_formats_sectioned_summary(tmp_path):
     assert "[Runtime]" in payload
     assert "[Output]" in payload
     assert "\n  seed" in payload
+    assert "cudnn_benchmark" in payload
+    assert "allow_tf32" in payload
     assert "seed: 42, num_experiments" not in payload

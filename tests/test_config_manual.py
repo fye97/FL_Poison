@@ -18,6 +18,8 @@ DOC_RUNTIME_ONLY_FIELDS = {
     "log_color",
     "eval_batch_size",
     "eval_interval",
+    "cudnn_benchmark",
+    "allow_tf32",
     "gpu_sample_interval_ms",
     "torch_profile",
     "torch_profile_wait",

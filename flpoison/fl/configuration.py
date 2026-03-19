@@ -152,6 +152,10 @@ def single_preprocess(args):
         args.eval_interval = DEFAULT_EVAL_INTERVAL
     if not hasattr(args, 'record_time') or args.record_time is None:
         args.record_time = False
+    if not hasattr(args, 'cudnn_benchmark') or args.cudnn_benchmark is None:
+        args.cudnn_benchmark = args.device.type == "cuda"
+    if not hasattr(args, 'allow_tf32') or args.allow_tf32 is None:
+        args.allow_tf32 = False
     if not hasattr(args, 'torch_profile') or args.torch_profile is None:
         args.torch_profile = False
     if not hasattr(args, 'gpu_sample_interval_ms') or args.gpu_sample_interval_ms is None:

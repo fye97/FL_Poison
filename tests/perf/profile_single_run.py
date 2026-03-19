@@ -80,6 +80,20 @@ def parse_args() -> argparse.Namespace:
         help="Enable torch.profiler in addition to runtime timing.",
     )
     parser.add_argument(
+        "--cudnn-benchmark",
+        dest="cudnn_benchmark",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Override cudnn_benchmark in the generated profiling config.",
+    )
+    parser.add_argument(
+        "--allow-tf32",
+        dest="allow_tf32",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Override allow_tf32 in the generated profiling config.",
+    )
+    parser.add_argument(
         "--gpu-sample-interval-ms",
         type=int,
         default=100,
@@ -141,6 +155,8 @@ def build_profile_config(args: argparse.Namespace, source_config: Path, output_r
         "eval_batch_size": args.eval_batch_size,
         "local_epochs": args.local_epochs,
         "seed": args.seed,
+        "cudnn_benchmark": args.cudnn_benchmark,
+        "allow_tf32": args.allow_tf32,
     }
     for key, value in overrides.items():
         if value is not None:
@@ -192,7 +208,8 @@ def print_summary(summary: dict[str, Any], perf_json: Path) -> None:
         f"eval_batch_size={metadata.get('eval_batch_size')} "
         f"clients={metadata.get('num_clients')} local_epochs={metadata.get('local_epochs')} "
         f"distribution={metadata.get('distribution')} defense={metadata.get('defense')} "
-        f"seed={metadata.get('seed')}"
+        f"seed={metadata.get('seed')} cudnn_benchmark={metadata.get('cudnn_benchmark')} "
+        f"allow_tf32={metadata.get('allow_tf32')}"
     )
     print(
         f"sec/round={overall.get('sec_per_round')} "

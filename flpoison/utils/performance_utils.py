@@ -266,6 +266,8 @@ class RuntimeProfiler:
             "num_workers": getattr(self.args, "num_workers", None),
             "eval_interval": getattr(self.args, "eval_interval", None),
             "gpu_sample_interval_ms": getattr(self.args, "gpu_sample_interval_ms", None),
+            "cudnn_benchmark": bool(getattr(self.args, "cudnn_benchmark", False)),
+            "allow_tf32": bool(getattr(self.args, "allow_tf32", False)),
             "torch_profile": bool(getattr(self.args, "torch_profile", False)),
             "output": str(self.output_file),
         }
@@ -291,6 +293,10 @@ class RuntimeProfiler:
             f"device={self.system_info['device']} gpu={self.system_info['gpu_name'] or 'n/a'} "
             f"torch={self.system_info['pytorch_version']} cuda={self.system_info['torch_cuda_version'] or 'n/a'} "
             f"cudnn={self.system_info['cudnn_version'] or 'n/a'}"
+        )
+        self.logger.info(
+            "Runtime flags | "
+            f"cudnn_benchmark={meta['cudnn_benchmark']} allow_tf32={meta['allow_tf32']}"
         )
 
     def start_round(self, round_idx):

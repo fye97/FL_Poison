@@ -166,6 +166,18 @@ def read_args():
         help="Enable runtime performance timing and per-round summaries.",
     )
     parser.add_argument(
+        "--cudnn_benchmark",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable cuDNN algorithm autotuning on CUDA. Default: enabled on CUDA, disabled otherwise.",
+    )
+    parser.add_argument(
+        "--allow_tf32",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Allow TensorFloat32 kernels for CUDA matmul/cuDNN float32 ops. Default: disabled.",
+    )
+    parser.add_argument(
         "-torch_profile",
         "--torch_profile",
         action="store_true",

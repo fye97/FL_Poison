@@ -23,6 +23,8 @@ class _Args:
     eval_interval = None
     local_epochs = None
     seed = None
+    cudnn_benchmark = None
+    allow_tf32 = None
     torch_profile = False
     gpu_sample_interval_ms = 100
 
@@ -75,3 +77,17 @@ def test_build_profile_config_keeps_explicit_eval_interval_override(tmp_path):
 
     payload = profile_config.read_text(encoding="utf-8")
     assert "eval_interval: 5" in payload
+
+
+def test_build_profile_config_writes_cuda_runtime_overrides(tmp_path):
+    source_config = tmp_path / "config.yaml"
+    source_config.write_text("cudnn_benchmark: true\nallow_tf32: false\n", encoding="utf-8")
+    args = _Args()
+    args.cudnn_benchmark = False
+    args.allow_tf32 = True
+
+    profile_config, _ = build_profile_config(args, source_config, tmp_path / "out")
+
+    payload = profile_config.read_text(encoding="utf-8")
+    assert "cudnn_benchmark: false" in payload
+    assert "allow_tf32: true" in payload

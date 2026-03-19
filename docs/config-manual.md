@@ -23,7 +23,7 @@ outline: deep
 3. 校验 `attack` / `defense` / `attacks` / `defenses` 名称是否合法。
 4. 应用 CLI 覆盖。除 `attack` / `defense` / `attack_params` / `defense_params` 外，其余非空 CLI 参数会直接覆盖同名 YAML 字段。
 5. `single_preprocess()` 从 `configs/presets/datasets.yaml` 读取当前 `dataset` 的元数据，并直接写回 `args`。
-6. `single_preprocess()` 补齐运行时默认值，例如 `eval_batch_size`、`eval_interval`、`record_time`、`torch_profile`、`log_color`、`output`。
+6. `single_preprocess()` 补齐运行时默认值，例如 `eval_batch_size`、`eval_interval`、`record_time`、`cudnn_benchmark`、`allow_tf32`、`torch_profile`、`log_color`、`output`。
 7. 攻击器和聚合器构造时，会把 `attack_params` / `defense_params` 合并到各自实现类的 `default_attack_params` / `default_defense_params` 上。
 
 几个关键规则：
@@ -71,6 +71,8 @@ log_stream: true
 log_color: auto
 
 record_time: false
+cudnn_benchmark: true   # CUDA 时默认 true，CPU/MPS 时默认 false
+allow_tf32: false
 gpu_sample_interval_ms: 100
 torch_profile: false
 
@@ -144,6 +146,8 @@ defense: Mean
 | `log_stream` | bool | `true` | 是否把日志同步打印到 stdout。 |
 | `log_color` | `auto`, bool | `auto` | `auto` 仅在 TTY 上输出彩色 ANSI 日志；文件日志始终纯文本。 |
 | `record_time` | bool | `false` | 记录每轮训练时间拆解、GPU 利用率与汇总 JSON。 |
+| `cudnn_benchmark` | bool | CUDA 时 `true`，否则 `false` | 是否启用 cuDNN autotune。对固定输入尺寸的 steady-state 训练通常能降低 `fwd_bwd` / `opt_step` 开销，但首轮会有 autotune 成本。 |
+| `allow_tf32` | bool | `false` | 是否允许 CUDA 上的 TF32 matmul / cuDNN float32 kernel。通常会进一步提速，但会轻微改变数值路径。 |
 | `gpu_sample_interval_ms` | int | `100` | `record_time=true` 时的 GPU 采样间隔。 |
 | `torch_profile` | bool | `false` | 启用 `torch.profiler`。 |
 | `torch_profile_wait` | int | `0` | `torch.profiler.schedule(wait=...)`。 |
@@ -501,6 +505,7 @@ defenses:
 - `attack` / `defense` 是特殊处理：如果只传了 `--attack BadNets` 而没传 `--attack_params`，运行时会尝试从 `attacks` 目录项里补 `BadNets` 的默认参数；没有的话才回退到实现默认值。
 - `--attack_params` 和 `--defense_params` 需要传 Python 字典字符串，代码用 `ast.literal_eval()` 解析。
 - `--log_color` 使用 `BooleanOptionalAction`，所以既支持 `--log_color`，也支持 `--no-log_color`。
+- `--cudnn_benchmark` / `--allow_tf32` 也使用 `BooleanOptionalAction`，因此都同时支持 `--no-*` 形式。
 - 单短横线长参数会被规范化，例如 `-experiment_id=3` 会被自动转成 `--experiment_id=3`。
 
 ### 示例

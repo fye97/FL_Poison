@@ -63,6 +63,21 @@ python tests/perf/profile_single_run.py \
 
 这条默认命令现在会自动把 profiling 配置里的 `eval_interval` 设成当前 `epochs`，也就是默认只在最后一轮做完整评估。这样保留最终指标，同时避免评估把训练主路径淹没。
 
+如果你要比较训练主路径的 CUDA 快速路径，也可以直接在 profiling 脚本里覆盖：
+
+```bash
+python tests/perf/profile_single_run.py \
+  --config configs/FedSGD_MNIST_Lenet.yaml \
+  --defense Mean \
+  --epochs 20 \
+  --num-clients 10 \
+  --batch-size 64 \
+  --local-epochs 1 \
+  --seed 7 \
+  --cudnn-benchmark \
+  --allow-tf32
+```
+
 如果你要做“端到端”基线，而不是默认的“训练吞吐”基线，显式传 `--eval-interval`：
 
 ```bash
@@ -96,6 +111,8 @@ python tests/perf/profile_single_run.py \
 说明：
 - `tests/perf/profile_single_run.py` 会生成一份临时配置文件，并强制开启 `record_time=True`
 - 若未显式传 `--eval-interval`，脚本会把 `eval_interval` 设成 `epochs`，即默认仅最后一轮评估
+- 训练配置默认会在 CUDA 上启用 `cudnn_benchmark=true`；`TF32` 默认仍关闭，需要显式传 `--allow-tf32`
+- `cudnn_benchmark` 更偏向 steady-state 吞吐优化；如果只跑极短的 profile，首轮 autotune 开销可能会盖过它的收益
 - 默认会固定 `num_experiments=1`、`experiment_id=0`
 - 输出文件名会带 `_exp0`
 - 对当前 `FedSGD + lenet + MNIST + 10 clients` 基线，建议显式设置 `--eval-batch-size 1024`

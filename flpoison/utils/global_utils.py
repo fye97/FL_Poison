@@ -346,6 +346,8 @@ def print_filtered_args(args, logger):
                 "log_stream",
                 "log_color",
                 "record_time",
+                "cudnn_benchmark",
+                "allow_tf32",
                 "torch_profile",
                 "gpu_sample_interval_ms",
                 "torch_profile_wait",
