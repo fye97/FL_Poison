@@ -30,11 +30,13 @@ from flpoison.aggregators.krum import Krum, krum
 from flpoison.aggregators.median import Median
 from flpoison.aggregators.multikrum import MultiKrum, multi_krum
 from flpoison.aggregators.trimmedmean import TrimmedMean, trimmed_mean
+from flpoison.attackers.alie import craft_alie_attack
 from flpoison.attackers.fangattack import craft_fang_attack
 from flpoison.fl.algorithms.fedavg import FedAvg
 from flpoison.fl.algorithms.fedsgd import FedSGD
 from flpoison.fl.models.model_utils import model2vec
 from flpoison.fl.server import Server
+from flpoison.fl.training import omniscient_attack
 
 
 def test_mean_aggregate_supports_torch_inputs():
@@ -172,6 +174,11 @@ def _fang_attack_reference_numpy(attacker_updates, perturbation_base, stop_thres
     return base - lambda_value * est_direction
 
 
+def _alie_attack_reference_numpy(benign_updates, z_max):
+    updates = np.array([np.asarray(update).reshape(-1) for update in benign_updates], dtype=np.float32)
+    return np.mean(updates, axis=0) + float(z_max) * np.std(updates, axis=0)
+
+
 def _bulyan_reference_numpy(updates, num_adv, num_clients):
     set_size = num_clients - 2 * num_adv
     active_idx = np.arange(len(updates), dtype=np.int64)
@@ -277,3 +284,51 @@ def test_craft_fang_attack_matches_reference_for_numpy_and_torch():
     assert np.allclose(crafted_numpy, expected)
     assert torch.is_tensor(crafted_torch)
     assert np.allclose(crafted_torch.cpu().numpy(), expected)
+
+
+def test_craft_alie_attack_matches_reference_for_numpy_and_torch():
+    benign_updates = np.array(
+        [
+            [0.2, -0.5, 1.0, 0.3],
+            [0.4, -0.1, 0.8, -0.6],
+            [0.1, -0.3, 1.2, 0.5],
+        ],
+        dtype=np.float32,
+    )
+    z_max = 1.75
+    expected = _alie_attack_reference_numpy(benign_updates, z_max)
+
+    crafted_numpy = craft_alie_attack(list(benign_updates), z_max)
+    crafted_torch = craft_alie_attack(
+        tuple(torch.tensor(update, dtype=torch.float32) for update in benign_updates), z_max
+    )
+
+    assert np.allclose(crafted_numpy, expected)
+    assert torch.is_tensor(crafted_torch)
+    assert np.allclose(crafted_torch.cpu().numpy(), expected)
+
+
+def test_omniscient_attack_reuses_single_shared_update_without_recomputing():
+    shared_update = torch.tensor([1.0, -2.0, 3.0], dtype=torch.float32)
+    call_counter = {"count": 0}
+
+    def _shared_attack(_clients):
+        call_counter["count"] += 1
+        return shared_update
+
+    attackers = [
+        SimpleNamespace(
+            category="attacker",
+            attributes=("omniscient",),
+            shared_omniscient_update=True,
+            omniscient=_shared_attack,
+            update=None,
+        )
+        for _ in range(3)
+    ]
+    benign = SimpleNamespace(category="benign", attributes=(), update=torch.zeros(3))
+
+    omniscient_attack([attackers[0], benign, attackers[1], attackers[2]])
+
+    assert call_counter["count"] == 1
+    assert all(attacker.update is shared_update for attacker in attackers)
