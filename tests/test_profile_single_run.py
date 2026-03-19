@@ -79,6 +79,18 @@ def test_build_profile_config_keeps_explicit_eval_interval_override(tmp_path):
     assert "eval_interval: 5" in payload
 
 
+def test_build_profile_config_keeps_disabled_eval_interval_override(tmp_path):
+    source_config = tmp_path / "config.yaml"
+    source_config.write_text("epochs: 20\neval_interval: 1\n", encoding="utf-8")
+    args = _Args()
+    args.eval_interval = 0
+
+    profile_config, _ = build_profile_config(args, source_config, tmp_path / "out")
+
+    payload = profile_config.read_text(encoding="utf-8")
+    assert "eval_interval: 0" in payload
+
+
 def test_build_profile_config_writes_cuda_runtime_overrides(tmp_path):
     source_config = tmp_path / "config.yaml"
     source_config.write_text("cudnn_benchmark: true\nallow_tf32: false\n", encoding="utf-8")

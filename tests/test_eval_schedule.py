@@ -24,5 +24,13 @@ def test_should_run_evaluation_still_runs_final_round_when_interval_is_large():
     assert scheduled == [2]
 
 
-def test_default_eval_interval_is_ten():
-    assert DEFAULT_EVAL_INTERVAL == 10
+def test_should_not_run_evaluation_when_interval_is_disabled():
+    scheduled = [
+        epoch for epoch in range(20)
+        if should_run_evaluation(epoch, total_epochs=20, eval_interval=0)
+    ]
+    assert scheduled == []
+
+
+def test_default_eval_interval_is_disabled():
+    assert DEFAULT_EVAL_INTERVAL == 0

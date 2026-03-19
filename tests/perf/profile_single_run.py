@@ -64,7 +64,8 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "Evaluation interval written into the generated profiling config. "
-            "Default: profile-friendly final-round-only evaluation (equal to epochs)."
+            "Default: profile-friendly final-round-only evaluation (equal to epochs). "
+            "Set <= 0 to disable evaluation explicitly."
         ),
     )
     parser.add_argument("--local-epochs", type=int, default=None, help="Optional local-epoch override.")
@@ -164,7 +165,7 @@ def build_profile_config(args: argparse.Namespace, source_config: Path, output_r
 
     effective_epochs = max(1, int(cfg.get("epochs", 1)))
     cfg["eval_interval"] = (
-        max(1, int(args.eval_interval))
+        int(args.eval_interval)
         if args.eval_interval is not None
         else effective_epochs
     )

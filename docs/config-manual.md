@@ -31,7 +31,7 @@ outline: deep
 - `attack_params` / `defense_params` 是“按键合并”，不是整包替换。你只写要改的键即可，未写的键保留实现默认值。
 - 如果主 YAML 没写 `attack_params` / `defense_params`，运行时会先尝试从 `attacks` / `defenses` 列表中找到当前 `attack` / `defense` 的默认参数；找不到时再回退到实现类默认值。
 - `num_adv` 和部分攻击里的 `poison_frequency` 都支持“比例或绝对值”。`< 1` 按比例乘总数后取 `int()`，`>= 1` 直接取 `int()`。
-- `eval_interval` 不会阻止最后一轮评估。最后一轮始终评估。
+- `eval_interval <= 0` 会完全关闭评估；只有在 `eval_interval > 0` 时，最后一轮才始终评估。
 - 数据集目录写入是强覆盖：`num_classes`、`mean`、`std`、`num_channels`、`num_features`、`num_dims` 等字段应维护在 `configs/presets/datasets.yaml`，不要期待在主 YAML 里覆写它们。
 - 旧字段 `catalogs`、`attack_catalog`、`defense_catalog` 已被废弃；当前代码会直接报错。
 
@@ -107,7 +107,7 @@ defense: Mean
 | `local_epochs` | int | 仅 `FedAvg` / `FedOpt` 使用 | `FedSGD` 会强制把本地轮数设为 `1`。 |
 | `lr_scheduler` | `MultiStepLR`, `StepLR`, `ExponentialLR`, `CosineAnnealingLR` | 不写则恒定学习率 | 当前固定实现为：`MultiStepLR(gamma=0.1)`、`StepLR(step_size=80, gamma=0.5)`、`ExponentialLR(gamma=0.9)`、`CosineAnnealingLR(T_max=epochs 或 epochs*local_epochs)`。 |
 | `milestones` | YAML list[int/float] | 仅 `MultiStepLR` 使用 | 元素 `< 1` 时按 `int(value * epochs)` 解释，所以比例写法只适合 YAML；CLI 当前只接受整数列表。 |
-| `eval_interval` | int | `10` | 每隔多少轮做一次完整评估；最后一轮始终评估。运行时会用 `max(1, int(eval_interval))`。 |
+| `eval_interval` | int | `0` | 每隔多少轮做一次完整评估。`<= 0` 时完全关闭评估；`> 0` 时按间隔评估，并且最后一轮始终评估。 |
 
 ### 数据、模型与划分
 

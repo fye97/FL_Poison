@@ -101,10 +101,16 @@ def fl_run(args):
     coordinator.set_fl_algorithm(args, the_server, clients)
     args.logger.info("Clients and server are initialized")
     args.logger.info("Starting Training...")
-    args.logger.info(
-        "Evaluation schedule | interval=%d rounds | final_round_always_eval=True",
-        max(1, int(args.eval_interval)),
-    )
+    eval_interval = int(args.eval_interval)
+    if eval_interval <= 0:
+        args.logger.info(
+            "Evaluation schedule | disabled"
+        )
+    else:
+        args.logger.info(
+            "Evaluation schedule | interval=%d rounds | final_round_always_eval=True",
+            eval_interval,
+        )
     torch_profiler = None
     with create_torch_profiler(args, args.output) as torch_profiler:
         for global_epoch in tqdm(range(args.epochs), desc="Global Epochs", dynamic_ncols=True):
@@ -154,7 +160,7 @@ def fl_run(args):
             should_eval = should_run_evaluation(
                 global_epoch=global_epoch,
                 total_epochs=args.epochs,
-                eval_interval=args.eval_interval,
+                eval_interval=eval_interval,
             )
             test_stats = {}
             eval_start = time.perf_counter()

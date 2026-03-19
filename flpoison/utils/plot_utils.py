@@ -30,6 +30,8 @@ def parse_logs(filename):
 
 def plot_accuracy(filename):
     epochs, accs, _, asr, _ = parse_logs(filename)
+    if not epochs:
+        return
 
     plt.plot(epochs, accs, label='Accuracy')
 
