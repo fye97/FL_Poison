@@ -7,6 +7,7 @@ Example:
     --config configs/FedSGD_MNIST_Lenet.yaml \
     --defense Mean \
     --epochs 20 \
+    --eval-interval 20 \
     --num-clients 10 \
     --batch-size 64 \
     --local-epochs 1 \
@@ -57,6 +58,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num-clients", type=int, default=None, help="Optional client-count override.")
     parser.add_argument("--batch-size", type=int, default=None, help="Optional train batch-size override.")
     parser.add_argument("--eval-batch-size", type=int, default=None, help="Optional eval batch-size override.")
+    parser.add_argument(
+        "--eval-interval",
+        type=int,
+        default=None,
+        help=(
+            "Evaluation interval written into the generated profiling config. "
+            "Default: profile-friendly final-round-only evaluation (equal to epochs)."
+        ),
+    )
     parser.add_argument("--local-epochs", type=int, default=None, help="Optional local-epoch override.")
     parser.add_argument("--seed", type=int, default=None, help="Optional seed override.")
     parser.add_argument(
@@ -135,6 +145,13 @@ def build_profile_config(args: argparse.Namespace, source_config: Path, output_r
     for key, value in overrides.items():
         if value is not None:
             cfg[key] = value
+
+    effective_epochs = max(1, int(cfg.get("epochs", 1)))
+    cfg["eval_interval"] = (
+        max(1, int(args.eval_interval))
+        if args.eval_interval is not None
+        else effective_epochs
+    )
 
     cfg["output"] = str(output_path)
     cfg["record_time"] = True

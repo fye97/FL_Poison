@@ -61,7 +61,9 @@ python tests/perf/profile_single_run.py \
   --seed 7
 ```
 
-如果要做“训练吞吐”基线，而不是“每轮都评估”的端到端基线，建议把评估频率拉低：
+这条默认命令现在会自动把 profiling 配置里的 `eval_interval` 设成当前 `epochs`，也就是默认只在最后一轮做完整评估。这样保留最终指标，同时避免评估把训练主路径淹没。
+
+如果你要做“端到端”基线，而不是默认的“训练吞吐”基线，显式传 `--eval-interval`：
 
 ```bash
 python tests/perf/profile_single_run.py \
@@ -73,7 +75,7 @@ python tests/perf/profile_single_run.py \
   --eval-batch-size 1024 \
   --local-epochs 1 \
   --seed 7 \
-  --extra-cli-args "--eval_interval 20"
+  --eval-interval 10
 ```
 
 如果还要同时跑 `torch.profiler`：
@@ -88,12 +90,12 @@ python tests/perf/profile_single_run.py \
   --eval-batch-size 1024 \
   --local-epochs 1 \
   --seed 7 \
-  --extra-cli-args "--eval_interval 20" \
   --torch-profile
 ```
 
 说明：
 - `tests/perf/profile_single_run.py` 会生成一份临时配置文件，并强制开启 `record_time=True`
+- 若未显式传 `--eval-interval`，脚本会把 `eval_interval` 设成 `epochs`，即默认仅最后一轮评估
 - 默认会固定 `num_experiments=1`、`experiment_id=0`
 - 输出文件名会带 `_exp0`
 - 对当前 `FedSGD + lenet + MNIST + 10 clients` 基线，建议显式设置 `--eval-batch-size 1024`
@@ -221,14 +223,14 @@ val accuracy: 0.2562
 建议至少保留两种 baseline：
 
 1. 端到端 baseline
-- 默认 `eval_interval=10`
+- 例如 `--eval-interval 10`
 - 适合看完整训练轮的真实业务耗时
 
 2. 训练吞吐 baseline
-- 例如 `--eval_interval 20`
+- `profile_single_run.py` 默认就是这个模式：`eval_interval=epochs`
 - 适合看训练主路径，不让评估淹没训练优化效果
 
-如果你需要旧的“每轮都评估”行为，显式传 `--eval_interval 1`。
+如果你需要旧的“每轮都评估”行为，显式传 `--eval-interval 1`。
 
 ### 5.2 如何看 `gpu_compute_ratio`
 
@@ -284,7 +286,7 @@ logs/torch_traces/perf_baseline/.../single_run_exp0/*.pt.trace.json
 
 说明：
 - 以下数值是当日实现下的历史记录。
-- 当前代码的默认评估调度已经调整为“每 `5` 轮一次，最后一轮强制评估”，因此 round 级触发点和平均耗时会与下面记录不同。
+- 当前 profiling 脚本默认会把评估调度设成“最后一轮强制评估”，因此 round 级触发点和平均耗时会与下面记录不同。
 
 ### 7.1 基线 A：默认按最后输出的配置跑
 
@@ -298,6 +300,7 @@ python tests/perf/profile_single_run.py \
   --num-clients 10 \
   --batch-size 64 \
   --local-epochs 1 \
+  --eval-interval 10 \
   --seed 7
 ```
 
@@ -328,7 +331,7 @@ python tests/perf/profile_single_run.py \
   --batch-size 64 \
   --local-epochs 1 \
   --seed 7 \
-  --extra-cli-args "--eval_interval 20" \
+  --eval-interval 20 \
   --torch-profile
 ```
 
