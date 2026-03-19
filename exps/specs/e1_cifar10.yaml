@@ -1,4 +1,4 @@
-name: cifar10
+name: e1_cifar10
 description: FedAvg poisoning benchmark on CIFAR10.
 
 scenarios:
@@ -8,7 +8,6 @@ scenarios:
 
 matrix:
   distributions:
-    - type: iid
     - type: non-iid
       dirichlet_alpha: 0.1
     - type: non-iid
@@ -16,9 +15,7 @@ matrix:
     - type: non-iid
       dirichlet_alpha: 1
   num_advs:
-    - 0.2
-    - 0.3
-    - 0.4
+    - 0.1
   models:
     - vgg19
   epochs:
@@ -30,7 +27,6 @@ matrix:
   seeds:
     - 42
   attacks:
-    - NoAttack
     - MinMax
     - MinSum
     - ALIE
