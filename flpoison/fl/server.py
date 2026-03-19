@@ -2,6 +2,7 @@ import numpy as np
 import time
 import torch
 from flpoison.aggregators import get_aggregator
+from flpoison.attackers import get_attacker_handler
 from flpoison.fl.algorithms import get_algorithm_handler
 from flpoison.fl.models import get_model
 from flpoison.fl.models.model_utils import model2vec
@@ -20,9 +21,13 @@ class Server(Worker):
         # initialize the aggregator for the server
         self.aggregator = get_aggregator(
             self.args.defense)(self.args, train_dataset=self.train_dataset)
+        attack_supports_torch = (
+            getattr(self.args, "attack", "NoAttack") == "NoAttack"
+            or getattr(get_attacker_handler(self.args.attack), "supports_torch_updates", False)
+        )
         self.use_torch_updates = bool(
             getattr(self.aggregator, "supports_torch_updates", False)
-            and getattr(self.args, "attack", "NoAttack") == "NoAttack"
+            and attack_supports_torch
         )
 
         # Keep Mean-like aggregation on torch to avoid repeated GPU<->CPU vector copies.
