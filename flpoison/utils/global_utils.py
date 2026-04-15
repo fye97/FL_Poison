@@ -56,6 +56,11 @@ class MaxLevelFilter(logging.Filter):
         return record.levelno < self.exclusive_upper_bound
 
 
+class StreamOptOutFilter(logging.Filter):
+    def filter(self, record):
+        return bool(getattr(record, "emit_to_stream", True))
+
+
 def normalize_log_color(value):
     if value is None:
         return "auto"
@@ -109,6 +114,7 @@ def build_stream_handler(*, use_tqdm=False, stream=None, formatter=None):
         handler = TqdmLoggingHandler(stream=stream or sys.stdout)
     else:
         handler = logging.StreamHandler(stream)
+    handler.addFilter(StreamOptOutFilter())
     if formatter is not None:
         handler.setFormatter(formatter)
     return handler
@@ -157,6 +163,17 @@ def setup_logger(
     return logger
 
 
+def log_file_only(logger, level, msg, *args, **kwargs):
+    has_file_handler = any(isinstance(handler, logging.FileHandler) for handler in logger.handlers)
+    if not has_file_handler:
+        logger.log(level, msg, *args, **kwargs)
+        return
+
+    extra = dict(kwargs.pop("extra", {}) or {})
+    extra["emit_to_stream"] = False
+    logger.log(level, msg, *args, extra=extra, **kwargs)
+
+
 def setup_console_logger(logger_name, level=logging.INFO, color="auto"):
     logger = logging.getLogger(logger_name)
     clear_logger_handlers(logger)
@@ -166,6 +183,7 @@ def setup_console_logger(logger_name, level=logging.INFO, color="auto"):
     stdout_handler = logging.StreamHandler(sys.stdout)
     stdout_handler.setLevel(logging.DEBUG)
     stdout_handler.addFilter(MaxLevelFilter(logging.WARNING))
+    stdout_handler.addFilter(StreamOptOutFilter())
     stdout_handler.setFormatter(
         ColorFormatter('%(message)s', use_color=should_colorize_stream(color, sys.stdout))
     )
@@ -173,6 +191,7 @@ def setup_console_logger(logger_name, level=logging.INFO, color="auto"):
 
     stderr_handler = logging.StreamHandler(sys.stderr)
     stderr_handler.setLevel(logging.WARNING)
+    stderr_handler.addFilter(StreamOptOutFilter())
     stderr_handler.setFormatter(
         ColorFormatter('%(message)s', use_color=should_colorize_stream(color, sys.stderr))
     )

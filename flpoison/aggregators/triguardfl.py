@@ -1,3 +1,4 @@
+import logging
 from typing import Dict, List, Tuple
 
 import numpy as np
@@ -12,6 +13,7 @@ from flpoison.aggregators.aggregator_utils import prepare_updates, wrapup_aggreg
 from flpoison.datapreprocessor.data_utils import subset_by_idx
 from flpoison.fl.models import get_model
 from flpoison.fl.models.model_utils import vec2model
+from flpoison.utils.global_utils import log_file_only
 
 from tqdm import tqdm
 
@@ -536,13 +538,20 @@ class TriGuardFL(AggregatorBase):
         else:
             raise ValueError(f"Unknown candidate_rule: {rule}")
 
-        self.args.logger.info("TriGuardFL cosine similarity: %s", cosine_similarity)
+        log_file_only(
+            self.args.logger,
+            logging.INFO,
+            "TriGuardFL cosine similarity: %s",
+            cosine_similarity,
+        )
         malicious_candidate_global = (
             participating_indices[np.asarray(malicious_candidate_index, dtype=int)].tolist()
             if malicious_candidate_index
             else []
         )
-        self.args.logger.info(
+        log_file_only(
+            self.args.logger,
+            logging.INFO,
             "TriGuardFL detected potential attackers: %s",
             malicious_candidate_global,
         )
@@ -593,9 +602,19 @@ class TriGuardFL(AggregatorBase):
         self.alphas[participating_indices] = alpha_part
         self.betas[participating_indices] = beta_part
 
-        self.args.logger.info("TriGuardFL detected attackers: %s", malicious_global)
+        log_file_only(
+            self.args.logger,
+            logging.INFO,
+            "TriGuardFL detected attackers: %s",
+            malicious_global,
+        )
         reputation_after = self.alphas / (self.alphas + self.betas + 1e-12)
-        self.args.logger.info("TriGuardFL reputation: %s", reputation_after)
+        log_file_only(
+            self.args.logger,
+            logging.INFO,
+            "TriGuardFL reputation: %s",
+            reputation_after,
+        )
 
         # Aggregate in delta space with optional norm clipping.
         clip_value = float(getattr(self, "delta_clip_value", 0.0) or 0.0)
