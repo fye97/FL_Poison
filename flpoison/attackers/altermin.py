@@ -1,5 +1,4 @@
 import torch.nn.functional as F
-import copy
 from flpoison.datapreprocessor.data_utils import Partition, dataset_class_indices, get_transform
 import torch
 from .labelflipping import LabelFlipping
@@ -28,6 +27,8 @@ class AlterMin(MPBase, DPBase, Client):
     3. update local model weights
     4. check target objective condition, if not, do targeted objective optimization by minimizing the loss only on the malicious data and do boosting for the malicious updates during this period
     """
+
+    supports_torch_updates = True
 
     def __init__(self, args, worker_id, train_dataset, test_dataset):
         Client.__init__(self, args, worker_id, train_dataset, test_dataset)
@@ -82,7 +83,8 @@ class AlterMin(MPBase, DPBase, Client):
         # optimize the target objective if malicious loss is not zero yet
         if asr_loss > 0.0:
             # 3. get weights before and after malicious training
-            pre_train_weights = copy.deepcopy(model2vec(self.model))
+            pre_train_weights = model2vec(
+                self.model, return_torch=True).detach().clone()
             # malicious training with adversarial objectives on poisoned data
             poison_acc, poison_loss, poison_samples = super().local_training(
                 train_loader=self.cycle(self.poisoned_loader),
@@ -91,7 +93,8 @@ class AlterMin(MPBase, DPBase, Client):
             total_correct += poison_acc * poison_samples
             total_loss_sum += poison_loss * poison_samples
             train_samples += poison_samples
-            post_train_weights = copy.deepcopy(model2vec(self.model))
+            post_train_weights = model2vec(
+                self.model, return_torch=True).detach().clone()
 
             # 5. check target objective condition. If not, do targeted objective optimization, explicit boosting
             boosted_weights = pre_train_weights + self.boosting_factor * \
@@ -110,8 +113,10 @@ class AlterMin(MPBase, DPBase, Client):
     def stealth_loss(self, y_pred, y_true):
         """rewrite the criterion function to include the distance loss
         """
-        distance_loss = np.linalg.norm(
-            model2vec(self.model) - self.global_weights_vec, 2)
+        distance_loss = torch.linalg.vector_norm(
+            model2vec(self.model, return_torch=True) - self.global_weights_tensor,
+            ord=2,
+        )
         return torch.nn.CrossEntropyLoss()(y_pred, y_true) + self.rho * distance_loss
 
     def client_test(self, model=None, test_dataset=None, poison_epochs=False):
@@ -139,7 +144,9 @@ class AlterMin(MPBase, DPBase, Client):
             if len(images) == 1:  # confidence of single malicious sample
                 target_confidences = probabilities[0, targets[0].item()].item()
             elif len(images) > 1:  # multiple malicious samples
-                target_confidences = torch.sum(
-                    targets == np.argmax(probabilities.cpu(), axis=1)) / len(images)
+                predicted = torch.argmax(probabilities, dim=1).cpu()
+                target_confidences = float(
+                    (targets == predicted).to(torch.float32).mean().item()
+                )
 
         return target_confidences

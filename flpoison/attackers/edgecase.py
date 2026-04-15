@@ -27,6 +27,8 @@ class EdgeCase(MPBase, DPBase, Client):
     2. model replacement attack, scaling attack
     """
 
+    supports_torch_updates = True
+
     def __init__(self, args, worker_id, train_dataset, test_dataset):
         Client.__init__(self, args, worker_id, train_dataset, test_dataset)
         """
@@ -56,7 +58,12 @@ class EdgeCase(MPBase, DPBase, Client):
         poison_epochs = False if poison_epochs is None else poison_epochs
         data = self.poisoned_set[1 - train_flag] if poison_epochs else dataset
         dataloader = torch.utils.data.DataLoader(
-            data, batch_size=self.args.batch_size, shuffle=train_flag, num_workers=self.args.num_workers, pin_memory=True)
+            data,
+            batch_size=self.args.batch_size,
+            shuffle=train_flag,
+            num_workers=self.args.num_workers,
+            pin_memory=getattr(getattr(self.args, "device", None), "type", None) == "cuda",
+        )
         while True:  # train mode for infinite loop with training epoch as the outer
             for images, targets in dataloader:
                 yield images, targets
@@ -71,19 +78,21 @@ class EdgeCase(MPBase, DPBase, Client):
         super().step(optimizer)
 
         # get the updated model
-        model_update = model2vec(self.model)
-        w_diff = model_update - self.global_weights_vec
+        model_update = model2vec(self.model, return_torch=True)
+        w_diff = model_update - self.global_weights_tensor
 
         # PGD projection
         if self.projection_type == "l_inf":
-            smaller_idx = np.less(w_diff, -self.epsilon)
-            larger_idx = np.greater(w_diff, self.epsilon)
-            model_update[smaller_idx] = self.global_weights_vec[smaller_idx] - self.epsilon
-            model_update[larger_idx] = self.global_weights_vec[larger_idx] + self.epsilon
+            lower = self.global_weights_tensor - self.epsilon
+            upper = self.global_weights_tensor + self.epsilon
+            model_update = torch.maximum(torch.minimum(model_update, upper), lower)
         elif self.projection_type == "l_2":
-            w_diff_norm = np.linalg.norm(w_diff)
-            if (cur_local_epoch % self.l2_proj_frequency == 0 or cur_local_epoch == self.local_epochs - 1) and w_diff_norm > self.epsilon:
-                model_update = self.global_weights_vec + self.epsilon * w_diff / w_diff_norm
+            w_diff_norm = torch.linalg.vector_norm(w_diff)
+            if (
+                cur_local_epoch % self.l2_proj_frequency == 0
+                or cur_local_epoch == self.local_epochs - 1
+            ) and float(w_diff_norm.item()) > self.epsilon:
+                model_update = self.global_weights_tensor + self.epsilon * w_diff / w_diff_norm
 
         # load the model_update to the model after PGD projection
         vec2model(model_update, self.model)

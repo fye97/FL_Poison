@@ -11,6 +11,7 @@ class MinBase(MPBase, Client):
     [Manipulating the Byzantine: Optimizing Model Poisoning Attacks and Defenses for Federated Learning](https://www.ndss-symposium.org/ndss-paper/manipulating-the-byzantine-optimizing-model-poisoning-attacks-and-defenses-for-federated-learning/) - NDSS '21
     """
     supports_torch_updates = True
+    shared_omniscient_update = True
 
     def __init__(self, args, worker_id, train_dataset, test_dataset):
         Client.__init__(self, args, worker_id, train_dataset, test_dataset)
@@ -23,10 +24,7 @@ class MinBase(MPBase, Client):
         # self.__class__.__name__ is the string-type subclass name when inherited. here is MinSum or MinMax
         attack_vec = Min(clients, self.__class__.__name__,
                          'unit_vec', self.gamma_init, self.stop_threshold)
-        # repeat attack vector for all attackers
-        if torch.is_tensor(attack_vec):
-            return attack_vec.unsqueeze(0).repeat(self.args.num_adv, 1)
-        return np.tile(attack_vec, (self.args.num_adv, 1))
+        return attack_vec
 
 
 @attacker_registry

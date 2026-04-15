@@ -1,10 +1,8 @@
-
-from copy import deepcopy
 from sklearn.cluster import KMeans
 import numpy as np
 from flpoison.aggregators.aggregatorbase import AggregatorBase
 from flpoison.aggregators import aggregator_registry
-from flpoison.aggregators.aggregator_utils import prepare_updates, wrapup_aggregated_grads
+from flpoison.aggregators.aggregator_utils import prepare_grad_updates, wrapup_aggregated_grads
 
 
 @aggregator_registry
@@ -30,8 +28,8 @@ class FLDetector(AggregatorBase):
         global_model is the server global model
         """
         self.updates = updates
-        self.global_model, self.current_epoch = deepcopy(
-            kwargs['last_global_model']), kwargs['global_epoch']
+        self.global_model = kwargs['last_global_model']
+        self.current_epoch = kwargs['global_epoch']
         self.global_epoch = kwargs['global_epoch']
         global_weights_vec = kwargs.get("global_weights_vec")
 
@@ -39,8 +37,8 @@ class FLDetector(AggregatorBase):
             # save the initial model for restart when outlier detected
             self.init_model = self.global_model
 
-        _, gradient_updates = prepare_updates(
-            self.args.algorithm, updates, self.global_model, vector_form=False, global_weights_vec=global_weights_vec)
+        gradient_updates = prepare_grad_updates(
+            self.args.algorithm, updates, self.global_model, global_weights_vec=global_weights_vec)
         benign_idx = np.arange(len(gradient_updates))
 
         if self.current_epoch - self.start_epoch > self.window_size: # > 40 + 10

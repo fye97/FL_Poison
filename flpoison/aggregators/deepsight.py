@@ -1,10 +1,10 @@
 import numpy as np
 import hdbscan
-from copy import deepcopy
 import torch
 from flpoison.aggregators.aggregatorbase import AggregatorBase
 from flpoison.aggregators.aggregator_utils import normclipping, prepare_updates, wrapup_aggregated_grads
-from flpoison.fl.models.model_utils import ol_from_vector
+from flpoison.fl.models import get_model
+from flpoison.fl.models.model_utils import ol_from_vector, vec2model
 from flpoison.aggregators import aggregator_registry
 from sklearn.metrics.pairwise import cosine_distances
 
@@ -15,6 +15,8 @@ class DeepSight(AggregatorBase):
     [DeepSight: Mitigating Backdoor Attacks in Federated Learning Through Deep Model Inspection](https://arxiv.org/abs/2201.00763) - NDSS '22
     DeepSight first calculates the Normalized Update Energy and Threshold Exceedings values for each client, and then calculates the cosine distance between the clients' bias updates. It then clusters the clients based on the cosine distance, NEUPs, and Division Differences, and clips the updates based on the median of the normed updates.
     """
+
+    supports_torch_updates = True
 
     def __init__(self, args, **kwargs):
         super().__init__(args)
@@ -38,26 +40,32 @@ class DeepSight(AggregatorBase):
         self.global_model = kwargs['last_global_model']
         global_weights_vec = kwargs.get("global_weights_vec")
         # get model parameters updates and gradient updates
-        client_updated_model, gradient_updates = prepare_updates(
-            self.args.algorithm, updates, self.global_model, vector_form=False, global_weights_vec=global_weights_vec)
+        client_updated_model_vecs, gradient_updates = prepare_updates(
+            self.args.algorithm, updates, self.global_model, vector_form=True, global_weights_vec=global_weights_vec)
         # prepare the the (gradient) updates of output layers' parameter for each client
-        self.ol_updates = np.array([
-            ol_from_vector(
+        ol_updates = []
+        for cid in range(len(gradient_updates)):
+            ol_update = ol_from_vector(
                 gradient_updates[cid], self.global_model, flatten=False, return_type='dict')
-            for cid in range(self.args.num_clients)
-        ])
+            if torch.is_tensor(ol_update['weight']):
+                ol_update = {
+                    key: value.detach().cpu().numpy() for key, value in ol_update.items()
+                }
+            ol_updates.append(ol_update)
+        self.ol_updates = np.array(ol_updates, dtype=object)
 
         # 2. filtering layer: prepare the NEUPs, DDifs, cosine distance for clustering
         NEUPs, TEs = self.get_NEUPs_TEs()
-        DDifs = self.get_DDifs(client_updated_model)
+        DDifs = self.get_DDifs(client_updated_model_vecs)
         cosine_dists = self.get_cosine_distance()
         # print("Filtering layer is done, NEUPs, TEs, DDifs, cosine distances are prepared")
 
         # 3. Ensemble clustering
         import warnings
-        warnings.filterwarnings("error", category=RuntimeWarning)
         try:
-            cluster_labels = self.clustering(NEUPs, DDifs, cosine_dists)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("error", category=RuntimeWarning)
+                cluster_labels = self.clustering(NEUPs, DDifs, cosine_dists)
         except RuntimeWarning as e:
             self.args.logger.warning("DeepSight clustering warning: %s", e)
             cluster_labels = np.zeros(self.args.num_clients, dtype=np.int64)
@@ -82,8 +90,20 @@ class DeepSight(AggregatorBase):
         # print("Poisoned Cluster Identification is done, the accepted indices are prepared")
 
         # 5. clipping accepeted gradient updates w.r.t median of the L2 norm of all gradient updates
-        clipped_gradient_updates = normclipping(gradient_updates[accepted_indices], np.median(
-            np.linalg.norm(gradient_updates, axis=1)))
+        if accepted_indices.size == 0:
+            accepted_indices = np.arange(len(gradient_updates), dtype=np.int64)
+        if torch.is_tensor(gradient_updates):
+            accepted_idx_tensor = torch.as_tensor(
+                accepted_indices, device=gradient_updates.device, dtype=torch.long)
+            accepted_gradient_updates = gradient_updates.index_select(0, accepted_idx_tensor)
+            clip_threshold = float(torch.median(
+                torch.linalg.vector_norm(gradient_updates, dim=1)).item())
+        else:
+            accepted_gradient_updates = gradient_updates[accepted_indices]
+            clip_threshold = float(
+                np.median(np.linalg.norm(gradient_updates, axis=1)))
+        clipped_gradient_updates = normclipping(
+            accepted_gradient_updates, clip_threshold)
 
         # 6. aggregation
         return wrapup_aggregated_grads(clipped_gradient_updates, self.args.algorithm, self.global_model, global_weights_vec=global_weights_vec)
@@ -120,32 +140,38 @@ class DeepSight(AggregatorBase):
             bias_update.reshape(self.args.num_clients, -1))
         return cosine_dists.astype(np.float64)
 
-    def get_DDifs(self, client_updated_model):
+    def get_DDifs(self, client_updated_model_vecs):
         # get the Division Differences
+        if not hasattr(self, "_ddif_model") or self._ddif_model is None:
+            self._ddif_model = get_model(self.args)
+        ddif_model = self._ddif_model
+        self.global_model.eval()
         DDifs = []
         for dataset in self.rand_datasets:
             seed_ddifs = []
             rand_loader = torch.utils.data.DataLoader(
                 dataset, self.args.batch_size, shuffle=False,
-                num_workers=self.args.num_workers, pin_memory=True
+                num_workers=self.args.num_workers,
+                pin_memory=str(getattr(self.args.device, "type", self.args.device)).startswith("cuda"),
             )
-            for cid in range(self.args.num_clients):
-                client_updated_model[cid].eval()
-                self.global_model.eval()
+            for cid in range(len(client_updated_model_vecs)):
+                vec2model(client_updated_model_vecs[cid], ddif_model)
+                ddif_model.eval()
 
-                DDif = torch.zeros(self.args.num_classes)
+                DDif = torch.zeros(self.args.num_classes, device=self.args.device)
                 # only random data as images/x for generating probability outputs
                 for rand_images in rand_loader:
-                    rand_images = rand_images.to(self.args.device)
+                    rand_images = rand_images.to(
+                        self.args.device, non_blocking=True)
                     with torch.no_grad():
-                        output_client = client_updated_model[cid](rand_images)
+                        output_client = ddif_model(rand_images)
                         output_global = self.global_model(rand_images)
                     # avoid zero-value
-                    temp = output_client.cpu() / (output_global.cpu()+self.epsilon)
+                    temp = output_client / (output_global + self.epsilon)
                     DDif.add_(torch.sum(temp, dim=0))
-                seed_ddifs.append((DDif / self.num_samples).numpy())
-            DDifs.append(seed_ddifs)
-        return np.array(DDifs)
+                seed_ddifs.append(DDif / self.num_samples)
+            DDifs.append(torch.stack(seed_ddifs, dim=0))
+        return torch.stack(DDifs, dim=0).detach().cpu().numpy()
 
     def clustering(self, NEUPs, DDifs, cosine_dists):
         # classification

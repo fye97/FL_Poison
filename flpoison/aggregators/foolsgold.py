@@ -26,7 +26,7 @@ class FoolsGold(AggregatorBase):
         self.update_and_set_attr()
 
         self.algorithm = "FedSGD"
-        self.checkpoints = []
+        self.checkpoint_sum = None
 
     def aggregate(self, updates, **kwargs):
         self.global_model = kwargs["last_global_model"]
@@ -44,8 +44,11 @@ class FoolsGold(AggregatorBase):
             cid_norm = np.linalg.norm(gradient_updates[cid])
             if cid_norm > 1:
                 gradient_updates[cid] /= cid_norm
-        self.checkpoints.append(copy.deepcopy(gradient_updates))
-        sumed_updates = np.sum(self.checkpoints, axis=0)
+        if self.checkpoint_sum is None or self.checkpoint_sum.shape != gradient_updates.shape:
+            self.checkpoint_sum = np.array(gradient_updates, copy=True)
+        else:
+            self.checkpoint_sum += gradient_updates
+        sumed_updates = self.checkpoint_sum
         # 2. get the indicative features mask via top-k largest absolute value of the last global model
         ol_last_global_model = ol_from_model(
             self.global_model, flatten=False, return_type='vector')

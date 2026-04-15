@@ -164,14 +164,16 @@ def vector2gradient(vector, model):
         current_pos += numel
 
 
-def gradient2vector(model):
+def gradient2vector(model, return_torch=False):
     """
     Convert gradients to a concatenated 1D numpy array
     """
     params = list(model.parameters())
     if not params:
-        return np.array([])
+        return torch.empty(0) if return_torch else np.array([])
     vec = torch.cat([param.grad.detach().reshape(-1) for param in params])
+    if return_torch:
+        return vec
     return vec.cpu().numpy()
 
 

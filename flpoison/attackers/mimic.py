@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 from flpoison.utils.global_utils import actor
 from flpoison.attackers.pbases.mpbase import MPBase
 from flpoison.attackers import attacker_registry
@@ -13,6 +14,9 @@ class Mimic(MPBase, Client):
     Mimic the behavior of any fixed benign client to introduce consistent bias that overemphasizes the influence of that benign update while under-representing other benign updates.
     """
 
+    supports_torch_updates = True
+    shared_omniscient_update = True
+
     def __init__(self, args, worker_id, train_dataset, test_dataset):
         Client.__init__(self, args, worker_id, train_dataset, test_dataset)
         self.default_attack_params = {'choice': 0}
@@ -24,4 +28,4 @@ class Mimic(MPBase, Client):
             clients), f"choice {self.choice} is out of range"
         attack_vec = clients[self.choice].update
         # repeat attack vector for all attackers
-        return np.tile(attack_vec, (self.args.num_adv, 1))
+        return attack_vec

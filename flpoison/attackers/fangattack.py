@@ -232,6 +232,7 @@ class FangAttack(MPBase, Client):
     """
 
     supports_torch_updates = True
+    shared_omniscient_update = True
 
     def __init__(self, args, worker_id, train_dataset, test_dataset):
         Client.__init__(self, args, worker_id, train_dataset, test_dataset)
@@ -253,11 +254,9 @@ class FangAttack(MPBase, Client):
             attacker_updates, perturbation_base, self.stop_threshold
         )
 
-        # Reusing the crafted point for all supporters matches the previous implementation
-        # while avoiding extra model-sized copies around the selected attack vector.
-        if torch.is_tensor(crafted_update):
-            return crafted_update.unsqueeze(0).repeat(num_attackers, 1)
-        return np.repeat(crafted_update.reshape(1, -1), num_attackers, axis=0)
+        # All attackers submit the same crafted point; sharing a single vector
+        # avoids materializing repeated model-sized copies.
+        return crafted_update
 
     def sample_vectors(self, epsilon, w0_prime, num_byzantine):
         """Sphere generation method

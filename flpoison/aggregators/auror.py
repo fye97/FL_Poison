@@ -1,7 +1,7 @@
-from copy import deepcopy
 import numpy as np
+import torch
 from sklearn.cluster import KMeans
-from flpoison.aggregators.aggregator_utils import prepare_grad_updates, prepare_updates, wrapup_aggregated_grads
+from flpoison.aggregators.aggregator_utils import prepare_grad_updates, wrapup_aggregated_grads
 from flpoison.aggregators.aggregatorbase import AggregatorBase
 from flpoison.aggregators import aggregator_registry
 import warnings
@@ -16,6 +16,8 @@ class Auror(AggregatorBase):
     [Auror: Defending against poisoning attacks in collaborative deep learning systems](https://dl.acm.org/doi/10.1145/2991079.2991125) - ACSAC '16
     Auror cluster the coordinate value of the feature vector into 2 cluster, and determine the indices of indicative features by checking the distance between the cluster centers. Then, Auror clusters the indicative features to get majority cluster as benign ones for aggregation.
     """
+
+    supports_torch_updates = True
 
     def __init__(self, args, **kwargs):
         super().__init__(args)
@@ -63,15 +65,42 @@ class Auror(AggregatorBase):
             # convert the indicative_idx of output layer to the whole model's indices
             self.indicative_idx = np.array(
                 self.indicative_idx, dtype=np.int64) + len(gradient_updates[0]) - len(self.ol_updates[0])
+        if len(self.indicative_idx) == 0:
+            self.epoch_cnt += 1
+            return wrapup_aggregated_grads(
+                gradient_updates,
+                self.args.algorithm,
+                self.global_model,
+                global_weights_vec=global_weights_vec,
+            )
 
         # 2. cluster the indicative features for anomaly detection
-        indicative_updates = gradient_updates[:, self.indicative_idx]
+        if torch.is_tensor(gradient_updates):
+            indicative_idx = torch.as_tensor(
+                self.indicative_idx, device=gradient_updates.device, dtype=torch.long)
+            indicative_updates = gradient_updates.index_select(
+                1, indicative_idx).detach().cpu().numpy()
+        else:
+            indicative_updates = gradient_updates[:, self.indicative_idx]
         kmeans = KMeans(n_clusters=2, random_state=0).fit(indicative_updates)
         labels = kmeans.labels_
         labels = labels[labels != -1]
+        if len(labels) == 0:
+            self.epoch_cnt += 1
+            return wrapup_aggregated_grads(
+                gradient_updates,
+                self.args.algorithm,
+                self.global_model,
+                global_weights_vec=global_weights_vec,
+            )
         benign_label = 1 if np.sum(labels) > len(labels) / 2 else 0
         self.epoch_cnt += 1
 
-        benign_grad_updates = gradient_updates[np.where(
-            labels == benign_label)]
+        benign_positions = np.where(labels == benign_label)[0]
+        if torch.is_tensor(gradient_updates):
+            benign_idx = torch.as_tensor(
+                benign_positions, device=gradient_updates.device, dtype=torch.long)
+            benign_grad_updates = gradient_updates.index_select(0, benign_idx)
+        else:
+            benign_grad_updates = gradient_updates[benign_positions]
         return wrapup_aggregated_grads(benign_grad_updates, self.args.algorithm, self.global_model, global_weights_vec=global_weights_vec)

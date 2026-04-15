@@ -1,4 +1,3 @@
-from copy import deepcopy
 from typing import Dict, List, Tuple
 
 import numpy as np
@@ -11,6 +10,7 @@ from flpoison.aggregators import aggregator_registry
 from flpoison.aggregators.aggregatorbase import AggregatorBase
 from flpoison.aggregators.aggregator_utils import prepare_updates, wrapup_aggregated_grads
 from flpoison.datapreprocessor.data_utils import subset_by_idx
+from flpoison.fl.models import get_model
 from flpoison.fl.models.model_utils import vec2model
 
 from tqdm import tqdm
@@ -27,10 +27,21 @@ def _robust_median_mad(x: np.ndarray) -> Tuple[float, float]:
     return med, mad
 
 
-def _clip_vectors_by_l2_norm(vectors: np.ndarray, clip_norm: float, eps: float = 1e-12) -> np.ndarray:
+def _clip_vectors_by_l2_norm(vectors, clip_norm: float, eps: float = 1e-12):
     """Clip row-wise vectors so that ||v_i||_2 <= clip_norm."""
     if clip_norm is None or not np.isfinite(clip_norm) or clip_norm <= 0:
         return vectors
+    if torch.is_tensor(vectors):
+        norms = torch.linalg.vector_norm(vectors, dim=1, keepdim=True)
+        scales = torch.clamp(
+            torch.as_tensor(
+                float(clip_norm),
+                device=vectors.device,
+                dtype=vectors.dtype,
+            ) / (norms + eps),
+            max=1.0,
+        )
+        return vectors * scales
     norms = np.linalg.norm(vectors, axis=1) + eps
     scales = np.minimum(1.0, float(clip_norm) / norms).astype(vectors.dtype, copy=False)
     return vectors * scales.reshape(-1, 1)
@@ -41,6 +52,7 @@ class _ServerEvaluator:
         self.args = args
         self.device = args.device
         self.loss_fn = torch.nn.CrossEntropyLoss()
+        self.pin_memory = str(getattr(self.device, "type", self.device)).startswith("cuda")
         self.class_loaders = self._create_class_loaders(dataset, indices, batch_size)
 
     def _create_class_loaders(self, dataset: Dataset, indices: np.ndarray, batch_size: int):
@@ -64,7 +76,7 @@ class _ServerEvaluator:
                 batch_size=batch_size,
                 shuffle=False,
                 num_workers=self.args.num_workers,
-                pin_memory=True,
+                pin_memory=self.pin_memory,
             )
         return class_loaders
 
@@ -75,17 +87,18 @@ class _ServerEvaluator:
         with torch.no_grad():
             for _, loader in self.class_loaders.items():
                 class_loss = 0.0
-                all_labels, all_preds = [], []
+                total_correct = 0
+                total_examples = 0
                 for images, labels in loader:
                     images, labels = images.to(self.device), labels.to(self.device)
                     logits = model(images)
                     class_loss += self.loss_fn(logits, labels).item()
                     preds = torch.argmax(logits, dim=1)
-                    all_labels.extend(labels.cpu().numpy())
-                    all_preds.extend(preds.cpu().numpy())
-                if not all_labels:
+                    total_correct += int((preds == labels).sum().item())
+                    total_examples += int(labels.numel())
+                if total_examples == 0:
                     continue
-                accuracy = float((np.array(all_preds) == np.array(all_labels)).mean())
+                accuracy = float(total_correct / total_examples)
                 loss = class_loss / len(loader)
                 all_accuracies.append(accuracy)
                 all_losses.append(loss)
@@ -135,10 +148,39 @@ def _sample_balanced_indices(dataset: Dataset, num_samples: int) -> np.ndarray:
 
 
 def _median_cosine_similarities(
-    vectors: np.ndarray, reference: np.ndarray, learning_rate: float
+    vectors, reference, learning_rate: float
 ) -> List[float]:
-    if vectors.size == 0:
+    if len(vectors) == 0:
         return []
+    if torch.is_tensor(vectors):
+        ref = reference
+        if not torch.is_tensor(ref):
+            ref = torch.as_tensor(
+                ref, device=vectors.device, dtype=vectors.dtype)
+        deltas = vectors - ref
+        lr = float(learning_rate) if learning_rate else 0.0
+        scaled = deltas if lr == 0.0 else deltas / lr
+        norms = torch.linalg.vector_norm(scaled, dim=1)
+        dot = scaled @ scaled.T
+        denom = norms[:, None] * norms[None, :]
+        cosine = torch.where(denom != 0, dot / denom, torch.zeros_like(dot))
+        cosine_similarity = []
+        for i in range(cosine.shape[0]):
+            values = cosine[:, i]
+            values = torch.cat((values[:i], values[i + 1:]))
+            if values.numel() == 0:
+                cosine_similarity.append(0.0)
+                continue
+            sorted_values = torch.sort(values).values
+            n = sorted_values.numel()
+            mid = n // 2
+            if n % 2 == 1:
+                median_value = float(sorted_values[mid].item())
+            else:
+                median_value = float(
+                    ((sorted_values[mid - 1] + sorted_values[mid]) / 2.0).item())
+            cosine_similarity.append(median_value)
+        return cosine_similarity
     deltas = vectors - reference
     lr = float(learning_rate) if learning_rate else 0.0
     scaled = deltas if lr == 0.0 else deltas / lr
@@ -242,13 +284,22 @@ def _perform_t_test(
     data_vector = np.array(data_vector)
     all_indices = set(range(len(data_vector)))
     comparison_indices = list(all_indices - set(target_indices))
-    comparison_group = data_vector[comparison_indices]
+    comparison_group = np.asarray(data_vector[comparison_indices], dtype=float)
 
     results = {}
     for i in target_indices:
         target_value = data_vector[i]
-        _, p_value = ttest_1samp(comparison_group, target_value, nan_policy="omit")
-        results[i] = (p_value, p_value < significance_level)
+        if comparison_group.size < 2:
+            results[i] = (1.0, False)
+            continue
+        finite_group = comparison_group[np.isfinite(comparison_group)]
+        if finite_group.size < 2 or np.allclose(finite_group, finite_group[0]):
+            results[i] = (1.0, False)
+            continue
+        _, p_value = ttest_1samp(finite_group, target_value, nan_policy="omit")
+        if not np.isfinite(p_value):
+            p_value = 1.0
+        results[i] = (float(p_value), float(p_value) < significance_level)
     return results
 
 
@@ -313,7 +364,18 @@ def _client_reputation(
     return rep, alpha_update, beta_update
 
 
-def _weighted_average_vectors(vectors: np.ndarray, weights: np.ndarray) -> np.ndarray:
+def _weighted_average_vectors(vectors, weights):
+    if torch.is_tensor(vectors):
+        if vectors.numel() == 0 or len(vectors) == 0:
+            return torch.mean(vectors, dim=0)
+        weight_tensor = torch.as_tensor(
+            weights, device=vectors.device, dtype=vectors.dtype)
+        if weight_tensor.numel() == 0:
+            return torch.mean(vectors, dim=0)
+        total = torch.sum(weight_tensor)
+        if float(total.item()) <= 0.0:
+            return torch.mean(vectors, dim=0)
+        return torch.sum(vectors * weight_tensor.unsqueeze(1), dim=0) / total
     weights = np.asarray(weights, dtype=float)
     if weights.size == 0 or len(vectors) == 0:
         return np.mean(vectors, axis=0)
@@ -329,6 +391,8 @@ class TriGuardFL(AggregatorBase):
     TriGuardFL: Byzantine-robust FL with cosine-similarity filtering,
     class-wise evaluation, and reputation-weighted aggregation.
     """
+
+    supports_torch_updates = True
 
     def __init__(self, args, **kwargs):
         super().__init__(args)
@@ -386,6 +450,7 @@ class TriGuardFL(AggregatorBase):
         if len(self.triguard_indices) > 0:
             eval_bs = min(eval_bs, len(self.triguard_indices))
         self.server_evaluator = _ServerEvaluator(self.args, train_dataset, self.triguard_indices, eval_bs)
+        self.eval_model = None
 
         num_clients = int(self.args.num_clients)
         self.alphas = np.ones(num_clients, dtype=float)
@@ -395,10 +460,13 @@ class TriGuardFL(AggregatorBase):
         global_epoch = int(kwargs.get("global_epoch", 0) or 0)
         self.global_model = kwargs["last_global_model"]
         global_weights_vec = kwargs["global_weights_vec"]
-        updates = np.array(updates, dtype=np.float32)
+        use_torch = torch.is_tensor(updates)
+        if not use_torch:
+            updates = np.array(updates, dtype=np.float32)
         num_clients = len(updates)
         if num_clients == 0:
-            zero_grad = np.zeros_like(global_weights_vec)
+            zero_grad = torch.zeros_like(
+                global_weights_vec) if torch.is_tensor(global_weights_vec) else np.zeros_like(global_weights_vec)
             return wrapup_aggregated_grads(
                 zero_grad, self.args.algorithm, self.global_model, aggregated=True, global_weights_vec=global_weights_vec
             )
@@ -426,7 +494,12 @@ class TriGuardFL(AggregatorBase):
                 # Never return a zero update; fall back to all clients.
                 participating_indices = np.arange(num_clients, dtype=int)
 
-        updates = updates[participating_indices]
+        if use_torch:
+            part_idx_tensor = torch.as_tensor(
+                participating_indices, device=updates.device, dtype=torch.long)
+            updates = updates.index_select(0, part_idx_tensor)
+        else:
+            updates = updates[participating_indices]
         num_participants = len(updates)
 
         local_model_vecs, _ = prepare_updates(
@@ -435,7 +508,10 @@ class TriGuardFL(AggregatorBase):
 
         # Work in delta space for both detection and aggregation.
         deltas = local_model_vecs - global_weights_vec
-        delta_norms = np.linalg.norm(deltas, axis=1)
+        delta_norms = torch.linalg.vector_norm(
+            deltas, dim=1) if torch.is_tensor(deltas) else np.linalg.norm(deltas, axis=1)
+        delta_norm_stats = delta_norms.detach().cpu().numpy(
+        ) if torch.is_tensor(delta_norms) else delta_norms
 
         cosine_similarity = _median_cosine_similarities(
             local_model_vecs, global_weights_vec, self.args.learning_rate
@@ -447,7 +523,7 @@ class TriGuardFL(AggregatorBase):
             significance_level=getattr(self, "cos_significance", 0.02),
         )
         norm_candidates = _norm_outlier_candidates(
-            delta_norms,
+            delta_norm_stats,
             method=getattr(self, "norm_filter_method", "none"),
             k=getattr(self, "norm_filter_k", 3.5),
             percentile=getattr(self, "norm_filter_percentile", 0.95),
@@ -478,16 +554,22 @@ class TriGuardFL(AggregatorBase):
         if len(w_locals_benign_candidate) == 0:
             w_locals_benign_candidate = list(local_model_vecs)
 
-        w_glob_benign_candidate = np.mean(np.stack(w_locals_benign_candidate, axis=0), axis=0)
+        if torch.is_tensor(local_model_vecs):
+            w_glob_benign_candidate = torch.mean(
+                torch.stack(w_locals_benign_candidate, dim=0), dim=0)
+        else:
+            w_glob_benign_candidate = np.mean(
+                np.stack(w_locals_benign_candidate, axis=0), axis=0)
 
         list_acc_local, list_loss_local = [], []
+        if self.eval_model is None:
+            self.eval_model = get_model(self.args)
         for c in range(len(malicious_candidate_index) + 1):
-            net_server_local = deepcopy(self.global_model)
             if c < len(malicious_candidate_index):
-                vec2model(w_locals_malicious_candidate[c], net_server_local)
+                vec2model(w_locals_malicious_candidate[c], self.eval_model)
             else:
-                vec2model(w_glob_benign_candidate, net_server_local)
-            acc_total, loss_total = self.server_evaluator.evaluate_by_class(net_server_local)
+                vec2model(w_glob_benign_candidate, self.eval_model)
+            acc_total, loss_total = self.server_evaluator.evaluate_by_class(self.eval_model)
             list_acc_local.append(acc_total)
             list_loss_local.append(loss_total)
 
@@ -526,9 +608,10 @@ class TriGuardFL(AggregatorBase):
             elif method == "percentile":
                 q = float(getattr(self, "delta_clip_percentile", 0.95) or 0.95)
                 q = min(max(q, 0.0), 1.0)
-                clip_norm = float(np.quantile(delta_norms, q)) if delta_norms.size else 0.0
+                clip_norm = float(np.quantile(delta_norm_stats, q)
+                                  ) if delta_norm_stats.size else 0.0
             elif method == "mad":
-                med, mad = _robust_median_mad(delta_norms)
+                med, mad = _robust_median_mad(delta_norm_stats)
                 scale = 1.4826 * mad
                 k = float(getattr(self, "delta_clip_k", 3.0) or 3.0)
                 clip_norm = float(med + k * scale) if scale > 0 else 0.0

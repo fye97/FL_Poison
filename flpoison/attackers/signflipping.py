@@ -12,6 +12,8 @@ class SignFlipping(MPBase, Client):
     reverse the sign of the update
     """
 
+    supports_torch_updates = True
+
     def __init__(self, args, worker_id, train_dataset, test_dataset):
         Client.__init__(self, args, worker_id, train_dataset, test_dataset)
 

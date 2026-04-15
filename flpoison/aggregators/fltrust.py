@@ -1,8 +1,7 @@
-from copy import deepcopy
-from sklearn.metrics.pairwise import cosine_similarity
 from flpoison.aggregators.aggregator_utils import prepare_grad_updates, wrapup_aggregated_grads
 from flpoison.aggregators.aggregatorbase import AggregatorBase
 import numpy as np
+import torch
 from flpoison.datapreprocessor.data_utils import dataset_class_indices, subset_by_idx
 from flpoison.fl.client import Client
 from flpoison.aggregators import aggregator_registry
@@ -14,6 +13,8 @@ class FLTrust(AggregatorBase):
     [FLTrust: Byzantine-robust Federated Learning via Trust Bootstrapping](https://arxiv.org/abs/2012.13995) - NDSS '21
     FLTrust assumes that the server has a small benign dataset and trains a server benign model as the trust anchor, and computes the trust score as the cosine similarity between the client updates and the server models' update. The client updates are normalized by the server models' update, and then weighted by the trust score to compute the final aggregated update.
     """
+
+    supports_torch_updates = True
 
     def __init__(self, args, **kwargs):
         super().__init__(args)
@@ -53,8 +54,12 @@ class FLTrust(AggregatorBase):
             # get model parameters updates and gradient updates
             gradient_updates = prepare_grad_updates(
                 self.args.algorithm, updates, self.global_model, global_weights_vec=kwargs.get("global_weights_vec"))
-            gradient_updates = np.nan_to_num(
-                gradient_updates, nan=0.0, posinf=0.0, neginf=0.0)
+            if torch.is_tensor(gradient_updates):
+                gradient_updates = torch.nan_to_num(
+                    gradient_updates, nan=0.0, posinf=0.0, neginf=0.0)
+            else:
+                gradient_updates = np.nan_to_num(
+                    gradient_updates, nan=0.0, posinf=0.0, neginf=0.0)
 
             # 1. server model training
             self.server_client.load_global_model(global_weights_vec)
@@ -68,38 +73,85 @@ class FLTrust(AggregatorBase):
                 self.global_model,
                 global_weights_vec=global_weights_vec,
             )
-            root_grad_update = np.nan_to_num(
-                root_grad_update, nan=0.0, posinf=0.0, neginf=0.0)
-            root_grad_norm = float(np.linalg.norm(root_grad_update))
+            if torch.is_tensor(root_grad_update):
+                root_grad_update = torch.nan_to_num(
+                    root_grad_update.reshape(-1), nan=0.0, posinf=0.0, neginf=0.0)
+                root_grad_norm = float(
+                    torch.linalg.vector_norm(root_grad_update).item())
+            else:
+                root_grad_update = np.nan_to_num(
+                    np.asarray(root_grad_update).reshape(-1),
+                    nan=0.0,
+                    posinf=0.0,
+                    neginf=0.0,
+                )
+                root_grad_norm = float(np.linalg.norm(root_grad_update))
             if not np.isfinite(root_grad_norm) or root_grad_norm < 1e-12:
-                agg_grad_updates = np.mean(gradient_updates, axis=0)
+                agg_grad_updates = (
+                    torch.mean(gradient_updates, dim=0)
+                    if torch.is_tensor(gradient_updates)
+                    else np.mean(gradient_updates, axis=0)
+                )
                 with self.profile_substage("aggregate"):
                     return wrapup_aggregated_grads(
                         agg_grad_updates, self.args.algorithm, self.global_model, aggregated=True, global_weights_vec=global_weights_vec)
 
             # 3. get the weighted cosine similarity between the client updates and the server client update as trust score
-            TS = cosine_similarity(
-                gradient_updates, root_grad_update.reshape(1, -1))
+            if torch.is_tensor(gradient_updates):
+                client_norms = torch.linalg.vector_norm(gradient_updates, dim=1)
+                TS = torch.nan_to_num(
+                    torch.matmul(gradient_updates, root_grad_update) /
+                    (client_norms * root_grad_norm + 1e-12),
+                    nan=0.0,
+                    posinf=0.0,
+                    neginf=0.0,
+                ).clamp_min_(0.0)
+            else:
+                dot = gradient_updates @ root_grad_update.reshape(-1, 1)
+                client_norms = np.linalg.norm(gradient_updates, axis=1)
+                TS = np.divide(
+                    dot.reshape(-1, 1),
+                    (client_norms * root_grad_norm + 1e-12).reshape(-1, 1),
+                    out=np.zeros((len(gradient_updates), 1), dtype=gradient_updates.dtype),
+                    where=(client_norms > 0),
+                )
 
             # 4. apply relu to the similarity
-            TS = np.nan_to_num(TS, nan=0.0, posinf=0.0, neginf=0.0)
-            TS = np.maximum(TS, 0)
-            ts_sum = float(np.sum(TS))
+            if torch.is_tensor(TS):
+                ts_sum = float(TS.sum().item())
+            else:
+                TS = np.nan_to_num(TS, nan=0.0, posinf=0.0, neginf=0.0)
+                TS = np.maximum(TS, 0)
+                ts_sum = float(np.sum(TS))
             if ts_sum > 1e-12:
                 TS /= ts_sum
 
             # if the trust score is all zeros, set it to uniform, in case of server update deviation in fedsgd
-            if not np.any(TS):
-                TS = np.ones_like(TS) / len(TS)
+            if torch.is_tensor(TS):
+                if not bool(torch.any(TS > 0).item()):
+                    TS = torch.full_like(TS, 1.0 / len(TS))
+            else:
+                if not np.any(TS):
+                    TS = np.ones_like(TS) / len(TS)
 
             # 5. normalize the magnitudes of the client updates by the last global model
-            client_norms = np.linalg.norm(gradient_updates, axis=1).reshape(-1, 1)
-            normed_updates = gradient_updates / (client_norms + 1e-9) * root_grad_norm
-            normed_updates = np.nan_to_num(
-                normed_updates, nan=0.0, posinf=0.0, neginf=0.0)
+            if torch.is_tensor(gradient_updates):
+                normed_updates = gradient_updates / \
+                    (client_norms.unsqueeze(1) + 1e-9) * root_grad_norm
+                normed_updates = torch.nan_to_num(
+                    normed_updates, nan=0.0, posinf=0.0, neginf=0.0)
+            else:
+                client_norms = client_norms.reshape(-1, 1)
+                normed_updates = gradient_updates / (client_norms + 1e-9) * root_grad_norm
+                normed_updates = np.nan_to_num(
+                    normed_updates, nan=0.0, posinf=0.0, neginf=0.0)
 
         with self.profile_substage("aggregate"):
-            agg_grad_updates = np.average(
-                normed_updates, axis=0, weights=np.squeeze(TS))
+            if torch.is_tensor(normed_updates):
+                agg_grad_updates = torch.sum(
+                    normed_updates * TS.reshape(-1, 1), dim=0)
+            else:
+                agg_grad_updates = np.average(
+                    normed_updates, axis=0, weights=np.squeeze(TS))
 
             return wrapup_aggregated_grads(agg_grad_updates, self.args.algorithm, self.global_model, aggregated=True, global_weights_vec=global_weights_vec)

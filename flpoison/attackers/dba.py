@@ -15,6 +15,8 @@ class DBA(DPBase, Client):
     DBA introduce distributed backdoor attack, where each worker implant a local trigger at training time, and the global trigger is composed of all local triggers, launching the backdoor attack at inference time.
     """
 
+    supports_torch_updates = True
+
     def __init__(self, args, worker_id, train_dataset, test_dataset):
         Client.__init__(self, args, worker_id, train_dataset, test_dataset)
         self.default_attack_params = {"attack_model": "all2one", "scaling_factor": 100, "trigger_factor": [

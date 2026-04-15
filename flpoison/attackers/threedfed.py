@@ -1,8 +1,8 @@
 
 # !! Ongoing work, not finished yet
 
-import copy
 import logging
+import random
 import numpy as np
 import torch
 from .badnets import BadNets
@@ -22,7 +22,7 @@ class ThreeDFed(MPBase, Client):
         Client.__init__(self, args, worker_id, train_dataset, test_dataset)
         self.indicators = {}
         self.num_decoy: int = 0  # num of decoy models
-        alpha: List[float] = []
+        self.alpha: List[float] = []
         # whether the server applies weak DP, if True, the attacker will use the weakDP strategy in the following epochs
         self.weakDP: bool = False
 
@@ -36,7 +36,7 @@ class ThreeDFed(MPBase, Client):
             self.train_dataset, train_flag=True, poison_flag=True)
 
         # TODO: pass parameters and change others?
-        self.poison_start_epoch, self.poison_end_epoch = 0
+        self.poison_start_epoch, self.poison_end_epoch = 0, 0
 
     def omniscient(self, clients):
         """After the local training, the attacker can perform the attack.
@@ -44,15 +44,15 @@ class ThreeDFed(MPBase, Client):
         epoch = self.global_epoch
         if epoch == self.poison_start_epoch:
             self.design_indicator()
-        elif epoch in range([self.poison_start_epoch+1, self.poison_end_epoch]):
+        elif self.poison_start_epoch + 1 <= epoch < self.poison_end_epoch:
             # 1. Read indicator feedback, Algorithm 3 in paper
-            indicator_indices = 0
+            indicator_indices = self.design_indicator()
             accept = self.read_indicator(
-                self, clients, indicator_indices)
+                clients, indicator_indices)
             # Adaptive tuning the number of decoy models and self.alpha for backdoor training
             self.adaptive_tuning(accept)
 
-        self.backdoor_update = copy.deepcopy(self.update)
+        self.backdoor_update = self._clone_update(self.update)
         # 2. norm cliping, clip the backdoor updates to the norm size or predefined threshold of the benign updates
         super().local_training()
         super().fetch_updates()
@@ -65,12 +65,36 @@ class ThreeDFed(MPBase, Client):
         self.optimize_noise_masks()
         # 4. Decoy model design
 
-        pass
+        return self.update
+
+    def _clone_update(self, update):
+        if torch.is_tensor(update):
+            return update.detach().clone()
+        return np.array(update, copy=True)
 
     def norm_clip(self, backdoor_update, benign_update):
         # 1. Get the norm of the benign update and backdoor update
-        benign_norm, backdoor_norm = torch.norm(
-            benign_update), torch.norm(backdoor_update)
+        if torch.is_tensor(backdoor_update) or torch.is_tensor(benign_update):
+            reference = backdoor_update if torch.is_tensor(
+                backdoor_update) else benign_update
+            benign_tensor = benign_update if torch.is_tensor(benign_update) else torch.as_tensor(
+                benign_update, device=reference.device, dtype=reference.dtype)
+            backdoor_tensor = backdoor_update if torch.is_tensor(backdoor_update) else torch.as_tensor(
+                backdoor_update, device=reference.device, dtype=reference.dtype)
+            benign_norm = torch.linalg.vector_norm(benign_tensor)
+            backdoor_norm = torch.linalg.vector_norm(backdoor_tensor)
+            if float(backdoor_norm.item()) <= 0.0:
+                return backdoor_tensor
+            if float(backdoor_norm.item()) > float(benign_norm.item()):
+                backdoor_tensor = backdoor_tensor * \
+                    (benign_norm / backdoor_norm)
+            scale_factor = min(float((benign_norm / backdoor_norm).item()),
+                               float(self.args.scaling_factor))
+            return max(scale_factor, 1.0) * backdoor_tensor
+        benign_norm = np.linalg.norm(benign_update)
+        backdoor_norm = np.linalg.norm(backdoor_update)
+        if backdoor_norm <= 0.0:
+            return backdoor_update
         # 2. Clip the backdoor update to the norm size or predefined threshold of the benign update
         if backdoor_norm > benign_norm:
             backdoor_update = backdoor_update * \
@@ -78,11 +102,17 @@ class ThreeDFed(MPBase, Client):
         # If the norm is so small, scale the norm to the magnitude of benign reference update
         scale_factor = min((benign_norm / backdoor_norm),
                            self.args.scaling_factor)
-        return max(scale_factor, 1)*backdoor_update
+        return max(scale_factor, 1.0)*backdoor_update
 
     def design_indicator(self):
         total_devices = self.args.num_adv + self.num_decoy
         no_layer = 0
+        gradient = None
+        curvature = None
+        trainable_params = [x for x in self.model.parameters() if x.requires_grad]
+        if not trainable_params:
+            return np.array([], dtype=np.int64)
+        no_layer = min(no_layer, len(trainable_params) - 1)
         # 1. Find indicators
         for i, data in enumerate(self.train_loader):
             # Compute gradient for backdoor batch with cross entropy loss
@@ -93,30 +123,43 @@ class ThreeDFed(MPBase, Client):
             # torch.autograd.grad will not add the gradient to the graph like backward(), so the gradient will not be accumulated
             # check x.requires_grad so that BatchNorm and Dropout layers will not be included
             grad = torch.autograd.grad(loss.mean(),
-                                       [x for x in self.model.parameters() if
-                                           x.requires_grad],
+                                       trainable_params,
                                        create_graph=True
                                        )[no_layer]
             # Compute curvature (sencond order derivative)
             grad_sum = torch.sum(grad)
             curv = torch.autograd.grad(grad_sum,
-                                       [x for x in self.model.parameters() if
-                                        x.requires_grad],
+                                       trainable_params,
                                        retain_graph=True
                                        )[no_layer]
-            gradient += grad.detach().cpu().numpy()
-            curvature += curv.detach().cpu().numpy()
+            grad_flat = grad.detach().reshape(-1)
+            curv_flat = curv.detach().reshape(-1)
+            if gradient is None:
+                gradient = torch.zeros_like(grad_flat)
+                curvature = torch.zeros_like(curv_flat)
+            gradient.add_(grad_flat)
+            curvature.add_(curv_flat)
 
-        curvature = np.abs(curvature.flatten())
+        if curvature is None or curvature.numel() == 0:
+            return np.array([], dtype=np.int64)
+        curvature = curvature.abs()
         # choose near zero curvature as indicators
-        indicator_indices = np.argpartition(curvature, total_devices)[
-            :total_devices]
+        k = min(int(total_devices), int(curvature.numel()))
+        if k <= 0:
+            return np.array([], dtype=np.int64)
+        indicator_indices = torch.topk(
+            curvature, k=k, largest=False).indices.detach().cpu().numpy()
+        self.indicators[self.global_epoch] = indicator_indices
+        return indicator_indices
         # TODO:
 
     def read_indicator(self, clients, indicator_indices):
         """get feedback which is the quotient of last global updates and current local updates on the same indicator indices, and mark accept, clipped, rejected for each client
         """
         accept, feedbacks = [], []
+        indicator_indices = np.asarray(indicator_indices, dtype=np.int64)
+        if indicator_indices.size == 0:
+            return accept
 
         # if previous epoch have already detect that the server is applying weakDP, then the attacker will use the weakDP strategy directly by discarding the indicator feedback function
         if self.weakDP:
@@ -124,8 +167,21 @@ class ThreeDFed(MPBase, Client):
 
         # get indicator feedback
         for cid in range(len(clients)):
-            feedbacks.append(clients[cid].update[indicator_indices] /
-                             clients[cid].global_weights_vec[indicator_indices])
+            client_update = clients[cid].update[indicator_indices]
+            global_ref = clients[cid].global_weights_vec[indicator_indices]
+            if torch.is_tensor(client_update) or torch.is_tensor(global_ref):
+                reference = client_update if torch.is_tensor(
+                    client_update) else global_ref
+                update_tensor = client_update if torch.is_tensor(client_update) else torch.as_tensor(
+                    client_update, device=reference.device, dtype=reference.dtype)
+                global_tensor = global_ref if torch.is_tensor(global_ref) else torch.as_tensor(
+                    global_ref, device=reference.device, dtype=reference.dtype)
+                feedback = float(torch.mean(
+                    update_tensor / (global_tensor + 1.0e-12)).item())
+            else:
+                feedback = float(np.mean(
+                    client_update / (global_ref + 1.0e-12)))
+            feedbacks.append(feedback)
 
         # mark accept, clipped, rejected for each client for subsequent adaptive tuning
         threshold = 1e-4 if "MNIST" in self.args.dataset else 1e-5

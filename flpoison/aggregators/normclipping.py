@@ -11,6 +11,8 @@ class NormClipping(AggregatorBase):
     It clips the norm of each client gradient updates by a threshold
     """
 
+    supports_torch_updates = True
+
     def __init__(self, args, **kwargs):
         super().__init__(args)
         """

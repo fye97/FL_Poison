@@ -1,6 +1,7 @@
 from flpoison.utils.global_utils import actor
 from flpoison.attackers.pbases.mpbase import MPBase
 import numpy as np
+import torch
 from flpoison.attackers import attacker_registry
 from flpoison.fl.client import Client
 
@@ -16,6 +17,9 @@ class IPM(MPBase, Client):
     For coordinate-wise median-like aggregators, such as GeometricMedian, direclty based on robust statistics, the attack parameter shoule big to break the robustness of the aggregator
     """
 
+    supports_torch_updates = True
+    shared_omniscient_update = True
+
     def __init__(self, args, worker_id, train_dataset, test_dataset):
         Client.__init__(self, args, worker_id, train_dataset, test_dataset)
         # scale=0.1, 0.5, 1, 2, 100 all break FedAvg and GeometricMedian, small scale, such a 0.1, breaks Krum
@@ -26,8 +30,9 @@ class IPM(MPBase, Client):
     def omniscient(self, clients):
         if self.attack_start_epoch is not None and self.global_epoch <= 2 + self.attack_start_epoch:  # 62 start attack
             return None
-        mean = np.mean(
-            [i.update for i in clients if i.category == "benign"], axis=0)
-        attack_vec = - self.scaling_factor * mean
-        # repeat attack vector for all attackers
-        return np.tile(attack_vec, (self.args.num_adv, 1))
+        benign_updates = [i.update for i in clients if i.category == "benign"]
+        if torch.is_tensor(benign_updates[0]):
+            mean = torch.mean(torch.stack(benign_updates, dim=0), dim=0)
+            return - self.scaling_factor * mean
+        mean = np.mean(benign_updates, axis=0)
+        return - self.scaling_factor * mean

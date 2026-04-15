@@ -55,6 +55,20 @@ class Client(Worker):
         self.global_weights_vec = global_weights_vec
         # load global parameters
         vec2model(self.global_weights_vec, self.model)
+        first_param = next(self.model.parameters(), None)
+        if first_param is None:
+            self.global_weights_tensor = None
+        elif torch.is_tensor(global_weights_vec):
+            self.global_weights_tensor = global_weights_vec.detach().reshape(-1).to(
+                device=first_param.device,
+                dtype=first_param.dtype,
+            )
+        else:
+            self.global_weights_tensor = torch.as_tensor(
+                global_weights_vec,
+                device=first_param.device,
+                dtype=first_param.dtype,
+            ).reshape(-1)
         if self.runtime_profiler is not None:
             if getattr(self.args.device, "type", None) == "cuda":
                 torch.cuda.synchronize(self.args.device)

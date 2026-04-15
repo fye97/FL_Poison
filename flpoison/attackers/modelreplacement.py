@@ -17,6 +17,8 @@ class ModelReplacement(MPBase, DPBase, Client):
     Model replacement attack, also known as constrain-and-scale attack and scaling attack, it first trains models with loss=normal_loss + anomaly_loss to avoid backdoor detection, then scales the update (X-G^t) by a factor gamma.
     """
 
+    supports_torch_updates = True
+
     def __init__(self, args, worker_id, train_dataset, test_dataset):
         Client.__init__(self, args, worker_id, train_dataset, test_dataset)
         """
@@ -45,10 +47,14 @@ class ModelReplacement(MPBase, DPBase, Client):
         """rewrite the criterion function by adding an anomaly detection term, cosine distance between the local weights and the global weights
         # a L_class + (1-a) L_ano
         """
-        # constrain: cosine distance between model2vec(self.model) and self.global_weights_vec
-        cosine_dist = cosine_distances(model2vec(self.model).reshape(
-            1, -1), self.global_weights_vec.reshape(1, -1))
-        return self.alpha * torch.nn.CrossEntropyLoss()(y_pred, y_true) + (1-self.alpha) * torch.from_numpy(cosine_dist).to(self.args.device)
+        local_weights = model2vec(self.model, return_torch=True)
+        cosine_dist = 1.0 - torch.nn.functional.cosine_similarity(
+            local_weights.unsqueeze(0),
+            self.global_weights_tensor.unsqueeze(0),
+            dim=1,
+            eps=1e-12,
+        ).squeeze(0)
+        return self.alpha * torch.nn.CrossEntropyLoss()(y_pred, y_true) + (1-self.alpha) * cosine_dist
 
     def non_omniscient(self):
         # scale

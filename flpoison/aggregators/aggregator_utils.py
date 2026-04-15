@@ -5,6 +5,7 @@ Methods used by only one aggregate function should not be placed here.
 from collections import defaultdict
 from copy import deepcopy
 import numpy as np
+import torch
 from flpoison.fl.models.model_utils import model2vec, vec2model
 
 
@@ -28,17 +29,26 @@ def krum_compute_scores(distances, i, n, f):
 def prepare_grad_updates(algorithm, updates, global_model=None, global_weights_vec=None):
 
     num_updates = len(updates)  # equal to num_clients
+    use_torch = torch.is_tensor(updates)
     if global_weights_vec is None and ("FedSGD" not in algorithm) and ("FedOpt" not in algorithm):
         if global_model is None:
             raise ValueError("global_model or global_weights_vec must be provided for FedAvg-style updates")
-        global_weights_vec = model2vec(global_model)
+        global_weights_vec = model2vec(global_model, return_torch=use_torch)
 
     # gradient_updates
-    gradient_updates = (
-            updates
-            if ("FedSGD" in algorithm) or ("FedOpt" in algorithm)
-            else updates - np.asarray(global_weights_vec).reshape(1, -1)
-            )    
+    if ("FedSGD" in algorithm) or ("FedOpt" in algorithm):
+        gradient_updates = updates
+    elif torch.is_tensor(updates):
+        base = global_weights_vec
+        if not torch.is_tensor(base):
+            base = torch.as_tensor(
+                base,
+                device=updates.device,
+                dtype=updates.dtype,
+            )
+        gradient_updates = updates - base.reshape(1, -1)
+    else:
+        gradient_updates = updates - np.asarray(global_weights_vec).reshape(1, -1)
     return gradient_updates
    
 def prepare_updates(algorithm, updates, global_model, vector_form=True, global_weights_vec=None):
@@ -48,18 +58,39 @@ def prepare_updates(algorithm, updates, global_model, vector_form=True, global_w
     model updates: model-form updated global model of each client for FedAvg
     gradient_updates: vector-form (pseudo-)gradient updates for FedSGD, FedOpt
     """
+    use_torch = torch.is_tensor(updates)
     num_updates = len(updates)  # equal to num_clients
     if global_weights_vec is None:
-        global_weights_vec = model2vec(global_model)
+        global_weights_vec = model2vec(global_model, return_torch=use_torch)
 
     # gradient_updates
     if algorithm == 'FedAvg':
         vec_updates = updates
-        gradient_updates = updates - np.asarray(global_weights_vec).reshape(1, -1)
+        if torch.is_tensor(updates):
+            base = global_weights_vec
+            if not torch.is_tensor(base):
+                base = torch.as_tensor(
+                    base,
+                    device=updates.device,
+                    dtype=updates.dtype,
+                )
+            gradient_updates = updates - base.reshape(1, -1)
+        else:
+            gradient_updates = updates - np.asarray(global_weights_vec).reshape(1, -1)
 
     elif algorithm in ["FedSGD", "FedOpt"]:
         gradient_updates = updates
-        vec_updates = np.asarray(global_weights_vec).reshape(1, -1) + updates
+        if torch.is_tensor(updates):
+            base = global_weights_vec
+            if not torch.is_tensor(base):
+                base = torch.as_tensor(
+                    base,
+                    device=updates.device,
+                    dtype=updates.dtype,
+                )
+            vec_updates = base.reshape(1, -1) + updates
+        else:
+            vec_updates = np.asarray(global_weights_vec).reshape(1, -1) + updates
 
     if vector_form:
         # vector_form return 1d np array vector model parameters
@@ -71,7 +102,8 @@ def prepare_updates(algorithm, updates, global_model, vector_form=True, global_w
             tmp = deepcopy(global_model)
             vec2model(vec_updates[cid], tmp)
             model_updates.append(tmp)
-        model_updates = np.array(model_updates)
+        if not torch.is_tensor(vec_updates):
+            model_updates = np.array(model_updates)
 
     return model_updates, gradient_updates
 
@@ -84,14 +116,32 @@ def wrapup_aggregated_grads(benign_grad_updates, algorithm, global_model=None, a
     algorithm: the type of algorithm
     global_model: the global model
     """
-    aggregated_gradient = benign_grad_updates if aggregated else np.mean(
-        benign_grad_updates, axis=0)
-    aggregated_gradient = np.asarray(aggregated_gradient).reshape(-1)
+    if aggregated:
+        aggregated_gradient = benign_grad_updates
+    elif torch.is_tensor(benign_grad_updates):
+        aggregated_gradient = torch.mean(benign_grad_updates, dim=0)
+    else:
+        aggregated_gradient = np.mean(benign_grad_updates, axis=0)
+
+    if torch.is_tensor(aggregated_gradient):
+        aggregated_gradient = aggregated_gradient.reshape(-1)
+    else:
+        aggregated_gradient = np.asarray(aggregated_gradient).reshape(-1)
     if algorithm == 'FedAvg':
         if global_weights_vec is None:
             if global_model is None:
                 raise ValueError("global_model or global_weights_vec must be provided for FedAvg wrap-up")
-            global_weights_vec = model2vec(global_model)
+            global_weights_vec = model2vec(
+                global_model, return_torch=torch.is_tensor(aggregated_gradient))
+        if torch.is_tensor(aggregated_gradient):
+            base = global_weights_vec
+            if not torch.is_tensor(base):
+                base = torch.as_tensor(
+                    base,
+                    device=aggregated_gradient.device,
+                    dtype=aggregated_gradient.dtype,
+                )
+            return base.reshape(-1) + aggregated_gradient
         return np.asarray(global_weights_vec) + aggregated_gradient
     else:
         return aggregated_gradient
@@ -105,12 +155,31 @@ def normclipping(vectors, threshold, epsilon=1e-6):
     if len(vectors.shape) != 2:
         raise ValueError(
             "The input should be 2d vectors, or you need to extend this function")
+    if torch.is_tensor(vectors):
+        norms = torch.linalg.vector_norm(vectors, dim=1, keepdim=True)
+        scales = torch.clamp(
+            torch.as_tensor(
+                threshold,
+                device=vectors.device,
+                dtype=vectors.dtype,
+            ) / (norms + epsilon),
+            max=1.0,
+        )
+        return vectors * scales
     return vectors * np.minimum(1, threshold / (np.linalg.norm(vectors, axis=1)+epsilon)).reshape(-1, 1)
 
 
 def addnoise(vector, noise_mean, noise_std):
     """ add gaussian noise to the vector, z~N(0, sigma^2 * I)
     """
+    if torch.is_tensor(vector):
+        return vector + torch.normal(
+            mean=float(noise_mean),
+            std=float(noise_std),
+            size=tuple(vector.shape),
+            device=vector.device,
+            dtype=vector.dtype,
+        )
     # generate gaussian noise, note that the noise should be float32 to be consistent with the future torch dtype
     noise = np.random.normal(noise_mean, noise_std,
                              vector.shape).astype(np.float32)

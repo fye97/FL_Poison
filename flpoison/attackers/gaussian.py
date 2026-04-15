@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 
 from flpoison.utils.global_utils import actor
 from flpoison.attackers.pbases.mpbase import MPBase
@@ -14,12 +15,22 @@ class Gaussian(MPBase, Client):
     submit Gaussian noise as the update
     """
 
+    supports_torch_updates = True
+
     def __init__(self, args, worker_id, train_dataset, test_dataset):
         Client.__init__(self, args, worker_id, train_dataset, test_dataset)
         self.default_attack_params = {'noise_mean': 0, 'noise_std': 1}
         self.update_and_set_attr()
 
     def non_omniscient(self):
+        if torch.is_tensor(self.update):
+            return torch.normal(
+                mean=float(self.noise_mean),
+                std=float(self.noise_std),
+                size=self.update.shape,
+                device=self.update.device,
+                dtype=self.update.dtype,
+            )
         noise = np.random.normal(
             loc=self.noise_mean, scale=self.noise_std, size=self.update.shape).astype(np.float32)
         return noise
