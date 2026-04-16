@@ -28,11 +28,11 @@ def build_args():
         num_adv=0,
         local_epochs=1,
         epochs=2,
+        evaluate=True,
         distribution="iid",
         dirichlet_alpha=0.5,
         cache_partition=True,
         num_workers=0,
-        eval_interval=1,
         gpu_sample_interval_ms=50,
         cudnn_benchmark=True,
         allow_tf32=False,
@@ -73,6 +73,7 @@ def test_runtime_profiler_writes_summary_json(tmp_path):
     assert payload["overall"]["final_test_metrics"]["Test Acc"] == pytest.approx(0.75)
     assert payload["metadata"]["cudnn_benchmark"] is True
     assert payload["metadata"]["allow_tf32"] is False
+    assert payload["metadata"]["evaluate"] is True
     assert payload["rounds"][0]["stage_times"]["defense"] == pytest.approx(0.05)
     assert payload["rounds"][0]["stage_times"]["aggregate"] == pytest.approx(0.03)
     assert payload["rounds"][0]["round_time_sec"] == pytest.approx(0.50)

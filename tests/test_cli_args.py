@@ -46,6 +46,42 @@ def test_read_args_log_color_defaults_to_none(monkeypatch):
     assert cli_args.log_color is None
 
 
+def test_read_args_evaluate_defaults_to_none(monkeypatch):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["flpoison", "--config", "configs/FedSGD_MNIST_Lenet.yaml"],
+    )
+
+    _, cli_args = read_args()
+
+    assert cli_args.evaluate is None
+
+
+def test_read_args_evaluate_flag_enables_evaluation(monkeypatch):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["flpoison", "--config", "configs/FedSGD_MNIST_Lenet.yaml", "--evaluate"],
+    )
+
+    _, cli_args = read_args()
+
+    assert cli_args.evaluate is True
+
+
+def test_read_args_no_evaluate_disables_evaluation(monkeypatch):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["flpoison", "--config", "configs/FedSGD_MNIST_Lenet.yaml", "--no-evaluate"],
+    )
+
+    _, cli_args = read_args()
+
+    assert cli_args.evaluate is False
+
+
 def test_read_args_no_log_color_disables_color(monkeypatch):
     monkeypatch.setattr(
         sys,

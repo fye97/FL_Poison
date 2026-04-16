@@ -23,7 +23,7 @@ outline: deep
 3. 校验 `attack` / `defense` / `attacks` / `defenses` 名称是否合法。
 4. 应用 CLI 覆盖。除 `attack` / `defense` / `attack_params` / `defense_params` 外，其余非空 CLI 参数会直接覆盖同名 YAML 字段。
 5. `single_preprocess()` 从 `configs/presets/datasets.yaml` 读取当前 `dataset` 的元数据，并直接写回 `args`。
-6. `single_preprocess()` 补齐运行时默认值，例如 `eval_batch_size`、`eval_interval`、`record_time`、`cudnn_benchmark`、`allow_tf32`、`torch_profile`、`log_color`、`output`。
+6. `single_preprocess()` 补齐运行时默认值，例如 `eval_batch_size`、`evaluate`、`record_time`、`cudnn_benchmark`、`allow_tf32`、`torch_profile`、`log_color`、`output`。
 7. 攻击器和聚合器构造时，会把 `attack_params` / `defense_params` 合并到各自实现类的 `default_attack_params` / `default_defense_params` 上。
 
 几个关键规则：
@@ -31,7 +31,7 @@ outline: deep
 - `attack_params` / `defense_params` 是“按键合并”，不是整包替换。你只写要改的键即可，未写的键保留实现默认值。
 - 如果主 YAML 没写 `attack_params` / `defense_params`，运行时会先尝试从 `attacks` / `defenses` 列表中找到当前 `attack` / `defense` 的默认参数；找不到时再回退到实现类默认值。
 - `num_adv` 和部分攻击里的 `poison_frequency` 都支持“比例或绝对值”。`< 1` 按比例乘总数后取 `int()`，`>= 1` 直接取 `int()`。
-- `eval_interval <= 0` 会完全关闭评估；只有在 `eval_interval > 0` 时，最后一轮才始终评估。
+- `evaluate: true` 会固定成“每个 global round 都评估一次”；`evaluate: false` 会完全关闭评估。
 - 数据集目录写入是强覆盖：`num_classes`、`mean`、`std`、`num_channels`、`num_features`、`num_dims` 等字段应维护在 `configs/presets/datasets.yaml`，不要期待在主 YAML 里覆写它们。
 - 旧字段 `catalogs`、`attack_catalog`、`defense_catalog` 已被废弃；当前代码会直接报错。
 
@@ -63,6 +63,7 @@ num_clients: 20
 num_adv: 0
 batch_size: 64
 eval_batch_size: 1024
+evaluate: false
 cache_partition: false
 
 gpu_idx: [0]
@@ -107,7 +108,7 @@ defense: Mean
 | `local_epochs` | int | 仅 `FedAvg` / `FedOpt` 使用 | `FedSGD` 会强制把本地轮数设为 `1`。 |
 | `lr_scheduler` | `MultiStepLR`, `StepLR`, `ExponentialLR`, `CosineAnnealingLR` | 不写则恒定学习率 | 当前固定实现为：`MultiStepLR(gamma=0.1)`、`StepLR(step_size=80, gamma=0.5)`、`ExponentialLR(gamma=0.9)`、`CosineAnnealingLR(T_max=epochs 或 epochs*local_epochs)`。 |
 | `milestones` | YAML list[int/float] | 仅 `MultiStepLR` 使用 | 元素 `< 1` 时按 `int(value * epochs)` 解释，所以比例写法只适合 YAML；CLI 当前只接受整数列表。 |
-| `eval_interval` | int | `0` | 每隔多少轮做一次完整评估。`<= 0` 时完全关闭评估；`> 0` 时按间隔评估，并且最后一轮始终评估。 |
+| `evaluate` | bool | `false` | 实验配置层的固定评估开关。`true` 时每个 global round 都完整评估一次，`false` 时完全关闭评估。 |
 
 ### 数据、模型与划分
 
@@ -358,6 +359,7 @@ defense: Mean
 - `Bucketing`
 - `Krum`
 - `Bulyan`
+- `CARAT`
 - `CenteredClipping`
 - `CRFL`
 - `DeepSight`
@@ -464,6 +466,7 @@ defense: Mean
 - `CRFL`：默认 `norm_threshold: 3`、`noise_mean: 0`、`noise_std: 0.001`。
 - `DeepSight`：默认 `num_seeds: 3`、`threshold_factor: 0.01`、`num_samples: 20000`、`tau: 0.33`、`epsilon: 1.0e-6`。
 - `FLAME`：默认 `gamma: 1.2e-5`。
+- `CARAT`：默认参数见 `configs/presets/defenses.yaml`，主要包括 probe 任务采样、MAD/percentile clipping，以及 certificate/rank 融合权重。
 - `FLDetector`：默认 `window_size: 10`、`start_epoch: 50`。
 - `LASA`：默认 `norm_bound: 1`、`sign_bound: 1`、`sparsity: 0.3`。
 - `TriGuardFL`：默认参数见上表。
@@ -505,6 +508,7 @@ defenses:
 - `attack` / `defense` 是特殊处理：如果只传了 `--attack BadNets` 而没传 `--attack_params`，运行时会尝试从 `attacks` 目录项里补 `BadNets` 的默认参数；没有的话才回退到实现默认值。
 - `--attack_params` 和 `--defense_params` 需要传 Python 字典字符串，代码用 `ast.literal_eval()` 解析。
 - `--log_color` 使用 `BooleanOptionalAction`，所以既支持 `--log_color`，也支持 `--no-log_color`。
+- `--evaluate` 也使用 `BooleanOptionalAction`，因此同时支持 `--evaluate` 和 `--no-evaluate`。
 - `--cudnn_benchmark` / `--allow_tf32` 也使用 `BooleanOptionalAction`，因此都同时支持 `--no-*` 形式。
 - CLI 只保留规范的双短横线参数形式，例如 `--experiment_id=3`。
 
@@ -517,7 +521,7 @@ python -m flpoison \
   --attack_params '{"target_label": 3, "poisoning_ratio": 0.2}' \
   --defense TrimmedMean \
   --defense_params '{"beta": 0.2}' \
-  --eval_interval 5 \
+  --evaluate \
   --record_time
 ```
 

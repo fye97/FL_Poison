@@ -323,7 +323,7 @@ def print_filtered_args(args, logger):
                 "lr_scheduler",
                 "milestones",
                 "local_epochs",
-                "eval_interval",
+                "evaluate",
             ],
         ),
         (

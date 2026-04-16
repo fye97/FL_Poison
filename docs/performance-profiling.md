@@ -61,7 +61,7 @@ python tests/perf/profile_single_run.py \
   --seed 7
 ```
 
-这条默认命令现在会自动把 profiling 配置里的 `eval_interval` 设成当前 `epochs`，也就是默认只在最后一轮做完整评估。这样保留最终指标，同时避免评估把训练主路径淹没。
+这条默认命令现在会保持 `evaluate: false`，也就是 profiling 默认不跑完整评估。这样更适合看训练主路径，不会让评估把 round 时间淹没。
 
 如果你要比较训练主路径的 CUDA 快速路径，也可以直接在 profiling 脚本里覆盖：
 
@@ -78,7 +78,7 @@ python tests/perf/profile_single_run.py \
   --allow-tf32
 ```
 
-如果你要做“端到端”基线，而不是默认的“训练吞吐”基线，显式传 `--eval-interval`：
+如果你要做“端到端”基线，而不是默认的“训练吞吐”基线，显式传 `--evaluate`：
 
 ```bash
 python tests/perf/profile_single_run.py \
@@ -90,7 +90,7 @@ python tests/perf/profile_single_run.py \
   --eval-batch-size 1024 \
   --local-epochs 1 \
   --seed 7 \
-  --eval-interval 10
+  --evaluate
 ```
 
 如果还要同时跑 `torch.profiler`：
@@ -110,7 +110,7 @@ python tests/perf/profile_single_run.py \
 
 说明：
 - `tests/perf/profile_single_run.py` 会生成一份临时配置文件，并强制开启 `record_time=True`
-- 若未显式传 `--eval-interval`，脚本会把 `eval_interval` 设成 `epochs`，即默认仅最后一轮评估
+- 若未显式传 `--evaluate`，脚本会保持 `evaluate=false`，即默认不跑完整评估
 - 训练配置默认会在 CUDA 上启用 `cudnn_benchmark=true`；`TF32` 默认仍关闭，需要显式传 `--allow-tf32`
 - `cudnn_benchmark` 更偏向 steady-state 吞吐优化；如果只跑极短的 profile，首轮 autotune 开销可能会盖过它的收益
 - 默认会固定 `num_experiments=1`、`experiment_id=0`
@@ -240,14 +240,14 @@ val accuracy: 0.2562
 建议至少保留两种 baseline：
 
 1. 端到端 baseline
-- 例如 `--eval-interval 10`
+- 例如 `--evaluate`
 - 适合看完整训练轮的真实业务耗时
 
 2. 训练吞吐 baseline
-- `profile_single_run.py` 默认就是这个模式：`eval_interval=epochs`
+- `profile_single_run.py` 默认就是这个模式：`evaluate=false`
 - 适合看训练主路径，不让评估淹没训练优化效果
 
-如果你需要旧的“每轮都评估”行为，显式传 `--eval-interval 1`。
+如果你需要评估成本，显式传 `--evaluate`；现在已经没有“按间隔评估”的中间档位。
 
 ### 5.2 如何看 `gpu_compute_ratio`
 
@@ -260,7 +260,7 @@ val accuracy: 0.2562
 注意：
 - 当前 `gpu_compute_ratio` 的分母是整个 round 总时间
 - 如果某轮包含 `evaluation`，而分子只统计训练路径里的 GPU compute，这个比例会被明显拉低
-- 所以做系统吞吐分析时，更建议看降低评估频率后的 baseline
+- 所以做系统吞吐分析时，更建议看关闭完整评估后的 baseline
 
 ### 5.3 如何看 `evaluation`
 
@@ -303,7 +303,7 @@ logs/torch_traces/perf_baseline/.../single_run_exp0/*.pt.trace.json
 
 说明：
 - 以下数值是当日实现下的历史记录。
-- 当前 profiling 脚本默认会把评估调度设成“最后一轮强制评估”，因此 round 级触发点和平均耗时会与下面记录不同。
+- 当前 profiling 脚本已经简化成 `evaluate: true/false` 的固定开关，因此下面记录只适合作为历史参考。
 
 ### 7.1 基线 A：默认按最后输出的配置跑
 
@@ -317,7 +317,7 @@ python tests/perf/profile_single_run.py \
   --num-clients 10 \
   --batch-size 64 \
   --local-epochs 1 \
-  --eval-interval 10 \
+  --evaluate \
   --seed 7
 ```
 
@@ -335,7 +335,7 @@ python tests/perf/profile_single_run.py \
 - 这一版里 `evaluation` 仍然是 round 大头
 - 不能把这个 baseline 直接当成训练吞吐基线
 
-### 7.2 基线 B：降低评估频率并启用 torch.profiler
+### 7.2 基线 B：关闭完整评估并启用 torch.profiler
 
 命令：
 
@@ -348,7 +348,6 @@ python tests/perf/profile_single_run.py \
   --batch-size 64 \
   --local-epochs 1 \
   --seed 7 \
-  --eval-interval 20 \
   --torch-profile
 ```
 
@@ -363,9 +362,8 @@ python tests/perf/profile_single_run.py \
 - `val_acc = 0.2562`
 
 进一步观察：
-- 全部 20 轮中，只有 round `0` 和 round `19` 触发了 evaluation
-- 非评估轮平均 `sec/round` 约为 `0.1648`
-- 非评估轮平均 `gpu_compute_ratio` 约为 `24.88%`
+- 关闭完整评估后，更容易把 `sec/round` 解释成训练主路径吞吐
+- `torch.profiler` 更适合在这个模式下看 `Memcpy`、DataLoader 和小 kernel 问题
 
 profiler 摘要结论：
 - 存在不少 `Memcpy`

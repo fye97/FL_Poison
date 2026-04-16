@@ -101,15 +101,14 @@ def fl_run(args):
     coordinator.set_fl_algorithm(args, the_server, clients)
     args.logger.info("Clients and server are initialized")
     args.logger.info("Starting Training...")
-    eval_interval = int(args.eval_interval)
-    if eval_interval <= 0:
+    evaluate_enabled = bool(args.evaluate)
+    if not evaluate_enabled:
         args.logger.info(
             "Evaluation schedule | disabled"
         )
     else:
         args.logger.info(
-            "Evaluation schedule | interval=%d rounds | final_round_always_eval=True",
-            eval_interval,
+            "Evaluation schedule | every_round=True",
         )
     torch_profiler = None
     with create_torch_profiler(args, args.output) as torch_profiler:
@@ -157,11 +156,7 @@ def fl_run(args):
             the_server.update_global()
 
             # evalute the attack success rate (ASR) when a backdoor attack is launched
-            should_eval = should_run_evaluation(
-                global_epoch=global_epoch,
-                total_epochs=args.epochs,
-                eval_interval=eval_interval,
-            )
+            should_eval = should_run_evaluation(evaluate=evaluate_enabled)
             test_stats = {}
             eval_start = time.perf_counter()
             if should_eval:

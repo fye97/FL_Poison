@@ -1,6 +1,8 @@
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -20,7 +22,7 @@ class _Args:
     num_clients = None
     batch_size = None
     eval_batch_size = 1024
-    eval_interval = None
+    evaluate = None
     local_epochs = None
     seed = None
     cudnn_benchmark = None
@@ -57,38 +59,36 @@ def test_build_profile_config_overrides_eval_batch_size(tmp_path):
     assert "eval_batch_size: 1024" in payload
 
 
-def test_build_profile_config_defaults_eval_interval_to_epochs(tmp_path):
+def test_build_profile_config_defaults_evaluate_to_false(tmp_path):
     source_config = tmp_path / "config.yaml"
-    source_config.write_text("epochs: 20\neval_interval: 1\n", encoding="utf-8")
+    source_config.write_text("epochs: 20\n", encoding="utf-8")
 
     profile_config, _ = build_profile_config(_Args(), source_config, tmp_path / "out")
 
     payload = profile_config.read_text(encoding="utf-8")
-    assert "eval_interval: 20" in payload
+    assert "evaluate: false" in payload
 
 
-def test_build_profile_config_keeps_explicit_eval_interval_override(tmp_path):
+def test_build_profile_config_preserves_source_evaluate_setting(tmp_path):
     source_config = tmp_path / "config.yaml"
-    source_config.write_text("epochs: 20\neval_interval: 1\n", encoding="utf-8")
+    source_config.write_text("epochs: 20\nevaluate: true\n", encoding="utf-8")
+
+    profile_config, _ = build_profile_config(_Args(), source_config, tmp_path / "out")
+
+    payload = profile_config.read_text(encoding="utf-8")
+    assert "evaluate: true" in payload
+
+
+def test_build_profile_config_applies_explicit_evaluate_override(tmp_path):
+    source_config = tmp_path / "config.yaml"
+    source_config.write_text("epochs: 20\nevaluate: false\n", encoding="utf-8")
     args = _Args()
-    args.eval_interval = 5
+    args.evaluate = True
 
     profile_config, _ = build_profile_config(args, source_config, tmp_path / "out")
 
     payload = profile_config.read_text(encoding="utf-8")
-    assert "eval_interval: 5" in payload
-
-
-def test_build_profile_config_keeps_disabled_eval_interval_override(tmp_path):
-    source_config = tmp_path / "config.yaml"
-    source_config.write_text("epochs: 20\neval_interval: 1\n", encoding="utf-8")
-    args = _Args()
-    args.eval_interval = 0
-
-    profile_config, _ = build_profile_config(args, source_config, tmp_path / "out")
-
-    payload = profile_config.read_text(encoding="utf-8")
-    assert "eval_interval: 0" in payload
+    assert "evaluate: true" in payload
 
 
 def test_build_profile_config_writes_cuda_runtime_overrides(tmp_path):

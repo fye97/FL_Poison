@@ -55,6 +55,7 @@ EXPECTED_SHARED_DEFENSES = {
     "CRFL",
     "DeepSight",
     "FLAME",
+    "CARAT",
 }
 
 

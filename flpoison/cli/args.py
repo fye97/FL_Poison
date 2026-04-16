@@ -61,9 +61,10 @@ def read_args():
     parser.add_argument("--learning_rate", type=float, help="initial learning rate")
     parser.add_argument("--local_epochs", type=int, help="local global_epoch")
     parser.add_argument(
-        "--eval_interval",
-        type=int,
-        help="Run full evaluation every N global rounds; set <= 0 to disable evaluation",
+        "--evaluate",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable evaluation at the experiment-config level. When enabled, evaluation runs every global round.",
     )
     parser.add_argument("--model", choices=all_models)
     parser.add_argument(

@@ -1,14 +1,9 @@
-DEFAULT_EVAL_INTERVAL = 0
+DEFAULT_EVALUATE = False
 
 
-def should_run_evaluation(global_epoch: int, total_epochs: int, eval_interval: int) -> bool:
+def should_run_evaluation(evaluate: bool) -> bool:
     """
-    Run full evaluation every ``eval_interval`` rounds and always on the final
-    round when evaluation is enabled. Non-positive intervals disable evaluation.
+    Evaluation is now controlled by a fixed boolean switch:
+    enabled means evaluate every round, disabled means never.
     """
-    if total_epochs <= 0:
-        return False
-    interval = int(eval_interval)
-    if interval <= 0:
-        return False
-    return global_epoch == total_epochs - 1 or (global_epoch + 1) % interval == 0
+    return bool(evaluate)

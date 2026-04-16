@@ -10,6 +10,7 @@ weight_decay: 5.0e-4
 
 num_clients: 50
 batch_size: 64
+evaluate: false
 learning_rate: 0.001
 local_epochs: 4
 

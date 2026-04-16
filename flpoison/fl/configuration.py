@@ -7,7 +7,7 @@ import torch
 
 from flpoison.aggregators import all_aggregators
 from flpoison.attackers import data_poisoning_attacks, model_poisoning_attacks
-from flpoison.fl.eval_schedule import DEFAULT_EVAL_INTERVAL
+from flpoison.fl.eval_schedule import DEFAULT_EVALUATE
 from flpoison.utils.config_utils import (
     load_dataset_catalog,
     load_experiment_config,
@@ -97,6 +97,15 @@ def override_args(args, cli_args):
                 )
 
 
+def normalize_evaluation_config(args):
+    """
+    Normalize evaluation controls before training starts.
+    """
+    evaluate = getattr(args, "evaluate", None)
+    args.evaluate = DEFAULT_EVALUATE if evaluate is None else bool(evaluate)
+    return args
+
+
 def benchmark_preprocess(args):
     bootstrap_logger = setup_console_logger(
         BOOTSTRAP_LOGGER_NAME,
@@ -148,8 +157,7 @@ def single_preprocess(args):
     args.num_adv = frac_or_int_to_int(args.num_adv, args.num_clients)
     if not hasattr(args, 'eval_batch_size') or args.eval_batch_size is None:
         args.eval_batch_size = args.batch_size
-    if not hasattr(args, 'eval_interval') or args.eval_interval is None:
-        args.eval_interval = DEFAULT_EVAL_INTERVAL
+    normalize_evaluation_config(args)
     if not hasattr(args, 'record_time') or args.record_time is None:
         args.record_time = False
     if not hasattr(args, 'cudnn_benchmark') or args.cudnn_benchmark is None:
