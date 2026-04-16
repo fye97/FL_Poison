@@ -9,6 +9,8 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
+from flpoison.utils.output_utils import time_log_path
+
 
 class TqdmLoggingHandler(logging.StreamHandler):
     def __init__(self, stream=None):
@@ -438,10 +440,8 @@ class TimingRecorder:
         self.id = id
         # record the duration and number of call of func
         self.global_timings = {}
-        time_log_path = output_file.replace(
-            "logs/", "logs/time_logs/", 1)[:-4]+'.log'
         self.logger = setup_logger(
-            __name__, time_log_path, level=logging.INFO)
+            __name__, str(time_log_path(output_file)), level=logging.INFO)
         self.client_log_flag = False
         epoch_level = False
         self.record_epochs = [2, 4, 6, 8, 10, 20,

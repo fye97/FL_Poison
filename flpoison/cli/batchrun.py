@@ -5,27 +5,42 @@ import subprocess
 import sys
 from functools import partial
 from multiprocessing import Pool
+from pathlib import Path
 
 from flpoison.fl.configuration import read_yaml
 from flpoison.utils.config_utils import preset_relpath
 from flpoison.utils.global_utils import setup_console_logger
+from flpoison.utils.output_utils import METRICS_FILENAME
 
 
 LOGGER = setup_console_logger("flpoison.batchrun", level=logging.INFO)
 
 
-def run_command(command, file_name):
-    # Check if the old file exists
-    if os.path.exists(f"{file_name}"):
-        LOGGER.info("File %s exists, skip", file_name)
+def task_output_dir(repo_dir, algorithm, dataset, model, distribution, attack, defense, epoch, num_clients, learning_rate):
+    return (
+        Path(repo_dir)
+        / "logs"
+        / "batch_runs"
+        / algorithm
+        / f"{dataset}_{model}"
+        / distribution
+        / f"{attack}__{defense}"
+        / f"ep{epoch}_clients{num_clients}_lr{learning_rate}"
+    )
+
+
+def run_command(command, metrics_file):
+    metrics_path = Path(metrics_file)
+    task_dir = metrics_path.parent
+    runner_log = task_dir / "runner.log"
+    status_file = task_dir / "jobmeta.txt"
+
+    if metrics_path.exists():
+        LOGGER.info("File %s exists, skip", metrics_path)
         return
 
     LOGGER.info("Running command: %s", command)
-    os.makedirs(os.path.dirname(file_name), exist_ok=True)
-
-    # Define log files for stdout and stderr
-    tmp = file_name.replace("logs", "err_logs")
-    out_error_file = f"{tmp[:-4]}.err"
+    task_dir.mkdir(parents=True, exist_ok=True)
 
     process = subprocess.Popen(
         command, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -33,16 +48,28 @@ def run_command(command, file_name):
     LOGGER.info("Started command with PID: %d", pid)
 
     stdout, stderr = process.communicate()
+    with runner_log.open("w", encoding="utf-8") as handle:
+        if stdout:
+            handle.write(stdout)
+        if stderr:
+            if stdout and not stdout.endswith("\n"):
+                handle.write("\n")
+            handle.write("[stderr]\n")
+            handle.write(stderr)
+
+    with status_file.open("w", encoding="utf-8") as handle:
+        handle.write(f"command={command}\n")
+        handle.write(f"pid={pid}\n")
+        handle.write(f"metrics_file={metrics_path}\n")
+        handle.write(f"runner_log={runner_log}\n")
+        handle.write(f"returncode={process.returncode}\n")
+
     if process.returncode == 0:
         LOGGER.info("Command %s finished successfully with PID: %d", command, pid)
     else:
         LOGGER.error("Command %s failed with PID: %d", command, pid)
         if stderr:
             LOGGER.error("Error: %s", stderr.strip())
-        os.makedirs(os.path.dirname(tmp), exist_ok=True)
-        with open(out_error_file, 'w') as out_error_log:
-            out_error_log.write(stdout)  # Save stdout to the log file
-            out_error_log.write(stderr)  # Save stderr to the error file
 
 
 def get_configs(dataset, algorithm, distribution, defense):
@@ -146,7 +173,19 @@ def main(args):
                             f"--distribution {distribution} --algorithm {algorithm} "
                             f"--learning_rate {learning_rate} --gpu_idx {gpu_idx}"
                         )
-                        file_name = f'{repo_dir}/logs/{algorithm}/{dataset}_{model}/{distribution}/{dataset}_{model}_{distribution}_{attack}_{defense}_{epoch}_{num_clients}_{learning_rate}_{algorithm}.txt'
+                        task_dir = task_output_dir(
+                            repo_dir,
+                            algorithm,
+                            dataset,
+                            model,
+                            distribution,
+                            attack,
+                            defense,
+                            epoch,
+                            num_clients,
+                            learning_rate,
+                        )
+                        file_name = (task_dir / METRICS_FILENAME).as_posix()
 
                         # Add the task to the list
                         tasks.append((command, file_name))

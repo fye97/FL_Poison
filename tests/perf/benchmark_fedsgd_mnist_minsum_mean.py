@@ -47,6 +47,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from flpoison.utils.config_utils import resolve_config_path
+from flpoison.utils.output_utils import METRICS_FILENAME, time_log_path
 
 
 TIME_LOG_RE = re.compile(
@@ -203,15 +204,11 @@ def temp_config_path(output_root: Path, label: str, run_index: int) -> Path:
 def runner_log_path(output_root: Path, label: str, run_index: int) -> Path:
     log_dir = output_root / "runner_logs"
     log_dir.mkdir(parents=True, exist_ok=True)
-    return log_dir / f"{label}_run{run_index:02d}.stdout.log"
+    return log_dir / f"{label}_run{run_index:02d}.log"
 
 
 def experiment_output_path(output_root: Path, label: str, run_index: int) -> Path:
-    return output_root / label / f"run{run_index:02d}.txt"
-
-
-def time_log_path(output_path: Path) -> Path:
-    return Path(str(output_path).replace("logs/", "logs/time_logs/", 1)).with_suffix(".log")
+    return output_root / label / f"run{run_index:02d}_{METRICS_FILENAME}"
 
 
 def load_yaml(path: Path) -> dict[str, Any]:

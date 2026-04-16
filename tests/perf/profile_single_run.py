@@ -32,6 +32,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from flpoison.utils.config_utils import resolve_config_path
+from flpoison.utils.output_utils import METRICS_FILENAME
 from flpoison.utils.performance_utils import perf_summary_path
 
 
@@ -138,7 +139,7 @@ def write_yaml(path: Path, data: dict[str, Any]) -> None:
 
 def build_profile_config(args: argparse.Namespace, source_config: Path, output_root: Path) -> tuple[Path, Path]:
     cfg = load_yaml(source_config)
-    output_path = output_root / "single_run_exp0.txt"
+    output_path = output_root / METRICS_FILENAME
     profile_config = output_root / "profile_config.yaml"
 
     overrides = {
@@ -240,7 +241,7 @@ def main() -> int:
         cmd.append(f"--defense={args.defense}")
     cmd.extend(shlex.split(args.extra_cli_args))
 
-    stdout_log = output_root / "runner.stdout.log"
+    stdout_log = output_root / "run.log"
     started = time.perf_counter()
     with stdout_log.open("w", encoding="utf-8") as handle:
         handle.write("COMMAND=" + shlex.join(cmd) + "\n")

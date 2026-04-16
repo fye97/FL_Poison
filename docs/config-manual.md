@@ -93,7 +93,7 @@ defense: Mean
 | `seed` | int | 必须最终存在 | 实验随机种子。重复实验时，实际使用的 seed 为 `seed + experiment_id`。 |
 | `num_experiments` | int | `1` | 非 benchmark 路径下重复运行次数。每次运行会递增 `experiment_id` 和 seed。 |
 | `experiment_id` | int | `0` | 重复实验起始编号。也会写入输出文件名。 |
-| `output` | string | 缺省时自动生成 | 日志文件路径。若重复实验启用，会自动追加或改写 `_exp{experiment_id}`；若文件名已有 `seedN` / `expN` 片段，也会同步改写。 |
+| `output` | string | 缺省时自动生成 | 每轮指标文件路径。默认写出 `*_metrics.csv`，内容只包含 `epoch`、`train_acc`、`train_loss`，以及在开启评估时附加的 `eval_acc`、`eval_loss`。若重复实验启用，会自动追加或改写 `_exp{experiment_id}`；若文件名已有 `seedN` / `expN` 片段，也会同步改写。详细运行日志会单独写到派生的 `logs/run_logs/...` 路径。 |
 
 ### 训练与优化
 

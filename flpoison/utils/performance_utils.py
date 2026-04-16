@@ -1,14 +1,14 @@
 import json
-import os
 import platform
 import shutil
 import subprocess
 import threading
 import time
 from contextlib import nullcontext
-from pathlib import Path
 
 import torch
+
+from flpoison.utils.output_utils import perf_summary_path, torch_trace_dir
 
 
 CLIENT_STAGE_NAMES = (
@@ -32,32 +32,6 @@ ROUND_STAGE_NAMES = (
     "evaluation",
     "logging",
 )
-
-
-def _derived_output_path(output_file, subdir, suffix):
-    output_file = str(output_file)
-    marker = f"logs{os.sep}"
-    replacement = f"logs{os.sep}{subdir}{os.sep}"
-    if marker in output_file:
-        derived = output_file.replace(marker, replacement, 1)
-        path = Path(derived)
-    else:
-        source = Path(output_file)
-        path = source.parent / subdir / source.name
-    path = path.with_suffix(suffix)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    return path
-
-
-def perf_summary_path(output_file):
-    return _derived_output_path(output_file, "perf_logs", ".json")
-
-
-def torch_trace_dir(output_file):
-    trace_path = _derived_output_path(output_file, "torch_traces", "")
-    trace_path.mkdir(parents=True, exist_ok=True)
-    return trace_path
-
 
 def _mean(values):
     return sum(values) / len(values) if values else None

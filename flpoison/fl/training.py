@@ -18,6 +18,7 @@ from flpoison.utils.global_utils import (
     setup_logger,
     setup_seed,
 )
+from flpoison.utils.output_utils import EpochMetricsWriter, run_log_path
 from flpoison.utils.plot_utils import plot_accuracy
 from flpoison.utils.performance_utils import RuntimeProfiler, create_torch_profiler, summarize_torch_profiler
 
@@ -66,13 +67,18 @@ def fl_run(args):
     """
     function to run federated learning logics
     """
+    metrics_path = Path(args.output)
+    training_log = run_log_path(metrics_path)
+
     # setup logger
     args.logger = setup_logger(
-        __name__, f'{args.output}', level=logging.INFO,
+        __name__, str(training_log), level=logging.INFO,
         stream=args.log_stream, use_tqdm=args.log_stream,
         color=getattr(args, "log_color", "auto"))
     flush_bootstrap_logs(args, args.logger)
     print_filtered_args(args, args.logger)
+    args.logger.info("Metrics output | %s", metrics_path)
+    args.logger.info("Run log | %s", training_log)
     runtime_profiler = RuntimeProfiler(
         args, args.logger, args.output) if args.record_time else None
     configure_torch_runtime(args)
@@ -111,7 +117,10 @@ def fl_run(args):
             "Evaluation schedule | every_round=True",
         )
     torch_profiler = None
-    with create_torch_profiler(args, args.output) as torch_profiler:
+    with create_torch_profiler(args, args.output) as torch_profiler, EpochMetricsWriter(
+        args.output,
+        include_eval=evaluate_enabled,
+    ) as metrics_writer:
         for global_epoch in tqdm(range(args.epochs), desc="Global Epochs", dynamic_ncols=True):
             round_start = time.perf_counter()
             if runtime_profiler is not None:
@@ -165,6 +174,14 @@ def fl_run(args):
             if runtime_profiler is not None and should_eval:
                 runtime_profiler.add_server_stage(
                     "evaluation", time.perf_counter() - eval_start)
+
+            metrics_writer.write_row(
+                epoch=global_epoch,
+                train_acc=avg_train_acc,
+                train_loss=avg_train_loss,
+                eval_acc=test_stats.get("Test Acc"),
+                eval_loss=test_stats.get("Test loss"),
+            )
 
             # print the training and testing results of the current global_epoch
             log_start = time.perf_counter()

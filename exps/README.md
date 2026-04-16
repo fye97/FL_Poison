@@ -59,7 +59,7 @@ python exps/launch.py local <spec> ...
 - `--ids 0-7` 或 `--ids 0,3,8-10`: 只跑部分 task
 - `--jobs N`: 本地并发 worker 数
 - `--gpu-tokens N`: GPU token 锁，限制同时占用 GPU 的 worker 数
-- `--resume`: 跳过已经成功结束的 task
+- `--resume`: 只补跑未完成的 task
 - `--dry-run`: 只生成本地 runner log，不真正启动 worker
 - `--log-dir <path>`: 改本地 runner log 目录
 
@@ -73,8 +73,11 @@ python exps/launch.py local <spec> ...
 
 输出位置：
 
-- 实验结果：`logs/local_runs/...`
+- 实验结果：`logs/local_runs/.../<attack>__<defense>/<run-dir>/metrics.csv`
 - runner 日志：`logs/local_array/...`
+
+每个 task 的结果目录还会保存 `jobmeta.txt`，并同步保留由训练过程生成的 `run.log`。
+成功完成的 task 还会写一个 `task.complete` 标记，因此本地中断后重新执行同一个命令并加 `--resume`，只会继续未完成的 task。
 
 默认行为：
 
@@ -93,6 +96,7 @@ python exps/launch.py cc <spec> ...
 
 - `--chunk-size N`: 每个 `sbatch` 提交里包含多少个 task id
 - `--start-id N --end-id M`: 只提交矩阵的一部分
+- `--resume`: 只提交结果目录尚未完成的 task
 - `--array-parallel N`: 覆盖 `slurm.array_parallel`
 - `--sbatch-arg=...`: 追加额外 `sbatch` 参数
 - `--dry-run`: 只打印 `sbatch` 命令，不实际提交
@@ -103,6 +107,7 @@ python exps/launch.py cc <spec> ...
 ./exps/run_cc.sh smoke_mnist --chunk-size 1 --dry-run
 ./exps/run_cc.sh cifar10 --chunk-size 32
 ./exps/run_cc.sh cifar10 --start-id 0 --end-id 63 --chunk-size 16
+./exps/run_cc.sh cifar10 --start-id 0 --end-id 255 --chunk-size 32 --resume
 ```
 
 默认行为：

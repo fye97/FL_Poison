@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import logging
 import os
 import queue
@@ -16,7 +17,7 @@ import time
 from dataclasses import dataclass
 from itertools import product
 from pathlib import Path
-from typing import Any, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, List, Optional, Sequence, Tuple
 
 import yaml
 
@@ -26,6 +27,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from flpoison.utils.config_utils import preset_relpath, resolve_config_path, resolve_preset_for_scenario
 from flpoison.utils.global_utils import setup_console_logger
+from flpoison.utils.output_utils import METRICS_FILENAME
 
 
 CONFIG_DEFAULT_FIELDS = (
@@ -48,6 +50,7 @@ DEFAULT_LOCAL_LOG_DIR = "logs/local_array"
 DEFAULT_LOCAL_RESULT_ROOT = "logs/local_runs"
 DEFAULT_SLURM_OUTPUT = "logs/slurm/%x_%A_%a.out"
 DEFAULT_SLURM_ERROR = "logs/slurm/%x_%A_%a.err"
+TASK_COMPLETE_FILENAME = "task.complete"
 LOGGER = setup_console_logger("flpoison.launch", level=logging.INFO)
 
 
@@ -570,17 +573,15 @@ def log_dir_for_task(result_root: Path, task: ExperimentTask) -> Path:
     return result_root / task.algorithm / f"{task.dataset}_{task.model}" / task.distribution
 
 
-def output_filename_for_task(task: ExperimentTask) -> str:
+def output_group_for_task(result_root: Path, task: ExperimentTask) -> Path:
+    return log_dir_for_task(result_root, task) / f"{task.attack}__{task.defense}"
+
+
+def output_dirname_for_task(task: ExperimentTask) -> str:
     parts = [
-        task.dataset,
-        task.model,
-        task.distribution,
-        task.attack,
-        task.defense,
-        task.epochs,
-        task.num_clients,
-        task.learning_rate,
-        task.algorithm,
+        f"ep{task.epochs}",
+        f"clients{task.num_clients}",
+        f"lr{task.learning_rate}",
         f"adv{task.num_adv}",
         f"seed{task.effective_seed}",
         f"exp{task.experiment_id}",
@@ -590,7 +591,105 @@ def output_filename_for_task(task: ExperimentTask) -> str:
     if task.distribution == "class-imbalanced_iid" and task.im_iid_gamma:
         parts.append(f"gamma{task.im_iid_gamma}")
     parts.append(f"cfg{Path(task.config_name).stem}")
-    return "_".join(parts) + ".txt"
+    return "_".join(parts)
+
+
+def task_output_dir(result_root: Path, task: ExperimentTask) -> Path:
+    return output_group_for_task(result_root, task) / output_dirname_for_task(task)
+
+
+def output_filename_for_task(_: ExperimentTask) -> str:
+    return METRICS_FILENAME
+
+
+def completion_marker_for_task(output_dir: Path) -> Path:
+    return output_dir / TASK_COMPLETE_FILENAME
+
+
+def metrics_row_count(metrics_file: Path) -> int:
+    try:
+        with metrics_file.open("r", encoding="utf-8", newline="") as handle:
+            reader = csv.DictReader(handle)
+            return sum(1 for row in reader if (row.get("epoch") or "").strip() != "")
+    except FileNotFoundError:
+        return 0
+
+
+def task_completion_artifacts(result_root: Path, task: ExperimentTask) -> Tuple[Path, Path, Path]:
+    output_dir = task_output_dir(result_root, task)
+    return (
+        output_dir,
+        output_dir / output_filename_for_task(task),
+        output_dir / "jobmeta.txt",
+    )
+
+
+def is_task_complete(result_root: Path, task: ExperimentTask) -> bool:
+    output_dir, metrics_file, metadata_file = task_completion_artifacts(result_root, task)
+    marker = completion_marker_for_task(output_dir)
+    if marker.exists() and metrics_file.exists() and metadata_file.exists():
+        return True
+
+    try:
+        expected_rows = int(task.epochs)
+    except Exception:
+        expected_rows = 0
+    if expected_rows < 1:
+        return False
+    if not metadata_file.exists() or not metrics_file.exists():
+        return False
+    return metrics_row_count(metrics_file) >= expected_rows
+
+
+def clear_task_completion_marker(output_dir: Path) -> None:
+    marker = completion_marker_for_task(output_dir)
+    if marker.exists():
+        marker.unlink()
+
+
+def write_task_completion_marker(output_dir: Path, task: ExperimentTask) -> None:
+    marker = completion_marker_for_task(output_dir)
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(
+        "\n".join(
+            [
+                f"task_id={task.task_id}",
+                f"completed_at={format_ts(time.time())}",
+                f"metrics_file={output_dir / output_filename_for_task(task)}",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def filter_incomplete_task_ids(plan: ExperimentPlan, ids: Sequence[int], result_root: Path) -> List[int]:
+    return [task_id for task_id in ids if not is_task_complete(result_root, plan.tasks[task_id])]
+
+
+def chunk_task_ids(ids: Sequence[int], chunk_size: int) -> List[List[int]]:
+    if chunk_size < 1:
+        raise ValueError("chunk_size must be >= 1")
+    items = list(ids)
+    return [items[start : start + chunk_size] for start in range(0, len(items), chunk_size)]
+
+
+def slurm_array_spec(task_ids: Sequence[int]) -> str:
+    values = sorted(set(int(task_id) for task_id in task_ids))
+    if not values:
+        raise ValueError("task_ids must not be empty")
+
+    segments: List[str] = []
+    start = values[0]
+    prev = values[0]
+    for value in values[1:]:
+        if value == prev + 1:
+            prev = value
+            continue
+        segments.append(f"{start}-{prev}" if start != prev else str(start))
+        start = prev = value
+    segments.append(f"{start}-{prev}" if start != prev else str(start))
+    return ",".join(segments)
 
 
 def format_command(cmd: Sequence[str]) -> str:
@@ -871,16 +970,23 @@ def worker_main(args: argparse.Namespace) -> int:
     data_root = resolve_data_root(root)
     result_root = result_root_for_platform(root, platform)
     final_log_dir = log_dir_for_task(result_root, task)
+    final_output_dir = task_output_dir(result_root, task)
     final_log_dir.mkdir(parents=True, exist_ok=True)
+    final_output_dir.mkdir(parents=True, exist_ok=True)
 
     output_basename = output_filename_for_task(task)
-    final_output_file = final_log_dir / output_basename
+    final_output_file = final_output_dir / output_basename
     scratch_root = Path(os.environ.get("SCRATCH", str(Path.home() / "scratch"))).expanduser().resolve()
+
+    if args.resume and is_task_complete(result_root, task):
+        LOGGER.info("Task %d already complete at %s; skipping.", task.task_id, final_output_dir)
+        return 0
 
     run_repo = root
     runtime_output_file = final_output_file
     local_results_dir: Optional[Path] = None
     local_repo: Optional[Path] = None
+    runtime_output_dir = final_output_dir
 
     if os.environ.get("SLURM_TMPDIR"):
         slurm_tmpdir = Path(os.environ["SLURM_TMPDIR"]).expanduser().resolve()
@@ -898,7 +1004,17 @@ def worker_main(args: argparse.Namespace) -> int:
                     data_root,
                 )
             run_repo = local_repo
-            runtime_output_file = local_results_dir / output_basename
+            runtime_output_dir = local_results_dir / final_output_dir.relative_to(final_log_dir)
+            runtime_output_file = runtime_output_dir / output_basename
+
+    if local_results_dir is None:
+        final_output_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        runtime_output_dir.mkdir(parents=True, exist_ok=True)
+
+    clear_task_completion_marker(final_output_dir)
+    if runtime_output_dir != final_output_dir:
+        clear_task_completion_marker(runtime_output_dir)
 
     config_path = task.config_file
     if run_repo != root:
@@ -907,8 +1023,8 @@ def worker_main(args: argparse.Namespace) -> int:
         except ValueError:
             config_path = task.config_file
 
-    metadata_target_dir = local_results_dir if local_results_dir is not None else final_log_dir
-    metadata_file = metadata_target_dir / f"{Path(output_basename).stem}_jobmeta.txt"
+    metadata_target_dir = runtime_output_dir if local_results_dir is not None else final_output_dir
+    metadata_file = metadata_target_dir / "jobmeta.txt"
 
     task_cmd = task_command(
         python_bin=python_bin,
@@ -932,6 +1048,7 @@ def worker_main(args: argparse.Namespace) -> int:
             f"python_bin={python_bin}",
             f"scratch_root={scratch_root}",
             f"result_root={result_root}",
+            f"result_dir={final_output_dir}",
             f"slurm_tmpdir={os.environ.get('SLURM_TMPDIR', '')}",
             f"cuda_visible_devices={os.environ.get('CUDA_VISIBLE_DEVICES', '')}",
         ],
@@ -999,10 +1116,15 @@ def worker_main(args: argparse.Namespace) -> int:
 
     proc: Optional[subprocess.Popen[str]] = None
 
-    def sync_results() -> None:
+    def sync_results() -> bool:
         if local_results_dir is not None:
-            sync_dir_contents(local_results_dir, final_log_dir)
-            LOGGER.info("Saved results to: %s", final_log_dir)
+            try:
+                sync_dir_contents(local_results_dir, final_log_dir)
+            except Exception as exc:
+                LOGGER.error("Failed to sync results from %s to %s: %s", local_results_dir, final_log_dir, exc)
+                return False
+            LOGGER.info("Saved results to: %s", final_output_dir)
+        return True
 
     def on_signal(signum: int, _frame: Any) -> None:
         if proc is not None and proc.poll() is None:
@@ -1026,13 +1148,23 @@ def worker_main(args: argparse.Namespace) -> int:
     env.setdefault("OMP_NUM_THREADS", str(os.environ.get("SLURM_CPUS_PER_TASK", spec.slurm.cpus_per_task)))
     env.setdefault("MKL_NUM_THREADS", env["OMP_NUM_THREADS"])
 
+    sync_ok = True
     try:
         proc = subprocess.Popen(task_cmd, cwd=str(run_repo), env=env, text=True)
         rc = proc.wait()
     finally:
-        sync_results()
+        sync_ok = sync_results()
         signal.signal(signal.SIGINT, old_handlers[signal.SIGINT])
         signal.signal(signal.SIGTERM, old_handlers[signal.SIGTERM])
+
+    if rc == 0:
+        if not sync_ok:
+            LOGGER.error("Task %d finished, but result sync failed.", task.task_id)
+            return 1
+        if not is_task_complete(result_root, task):
+            LOGGER.error("Task %d finished, but required result artifacts are incomplete under %s.", task.task_id, final_output_dir)
+            return 1
+        write_task_completion_marker(final_output_dir, task)
 
     return int(rc)
 
@@ -1060,15 +1192,6 @@ def parse_ids(raw: str, total: int) -> List[int]:
             deduped.append(item)
             seen.add(item)
     return deduped
-
-
-def log_tail_has_success(log_path: Path) -> bool:
-    try:
-        data = log_path.read_text(encoding="utf-8", errors="replace")
-    except FileNotFoundError:
-        return False
-    lines = [line.strip() for line in data.splitlines() if line.strip()]
-    return bool(lines) and lines[-1] == "LOCAL_ARRAY_EXIT_CODE=0"
 
 
 def ensure_dir(path: Path) -> None:
@@ -1144,11 +1267,14 @@ def local_worker_run_task(
     log_path: Path,
     *,
     dry_run: bool,
+    resume: bool,
 ) -> int:
     ensure_dir(log_path.parent)
     started = time.time()
     python_bin = resolve_python_bin(repo_root())
     cmd = [python_bin, str(Path(__file__).resolve()), "worker", str(spec_path), "--task-id", str(task_id)]
+    if resume:
+        cmd.append("--resume")
 
     with log_path.open("w", encoding="utf-8") as handle:
         handle.write(f"LOCAL_ARRAY_SPEC={spec_path}\n")
@@ -1177,6 +1303,7 @@ def local_main(args: argparse.Namespace) -> int:
     spec = load_spec(args.spec)
     plan = build_plan(spec)
     log_dir = (repo_root() / args.log_dir).resolve()
+    result_root = result_root_for_platform(repo_root(), "local")
 
     if args.jobs < 1:
         LOGGER.error("--jobs must be >= 1")
@@ -1195,12 +1322,7 @@ def local_main(args: argparse.Namespace) -> int:
         return 2
 
     if args.resume:
-        filtered: List[int] = []
-        for task_id in ids:
-            log_path = log_dir / f"{spec.name}_task{task_id}.out"
-            if not log_tail_has_success(log_path):
-                filtered.append(task_id)
-        ids = filtered
+        ids = filter_incomplete_task_ids(plan, ids, result_root)
 
     LOGGER.info("SPEC=%s", spec.name)
     LOGGER.info("TOTAL=%d", plan.total)
@@ -1224,9 +1346,9 @@ def local_main(args: argparse.Namespace) -> int:
         if args.gpu_tokens > 0:
             lock = TokenLock(token_lock_dir, args.gpu_tokens, args.gpu_lock_poll)
             with lock.acquire():
-                rc = local_worker_run_task(spec.path, task_id, base_env, log_path, dry_run=args.dry_run)
+                rc = local_worker_run_task(spec.path, task_id, base_env, log_path, dry_run=args.dry_run, resume=args.resume)
         else:
-            rc = local_worker_run_task(spec.path, task_id, base_env, log_path, dry_run=args.dry_run)
+            rc = local_worker_run_task(spec.path, task_id, base_env, log_path, dry_run=args.dry_run, resume=args.resume)
         return task_id, rc, log_path
 
     if args.jobs == 1:
@@ -1288,18 +1410,11 @@ def local_main(args: argparse.Namespace) -> int:
     return 0
 
 
-def chunk_ranges(start: int, end_inclusive: int, chunk_size: int) -> Iterable[Tuple[int, int]]:
-    cur = start
-    while cur <= end_inclusive:
-        chunk_end = min(cur + chunk_size - 1, end_inclusive)
-        yield cur, chunk_end
-        cur = chunk_end + 1
-
-
 def cc_main(args: argparse.Namespace) -> int:
     spec = load_spec(args.spec)
     plan = build_plan(spec)
     root = repo_root()
+    result_root = result_root_for_platform(root, "compute_canada")
 
     if args.chunk_size < 1:
         LOGGER.error("--chunk-size must be >= 1")
@@ -1320,17 +1435,27 @@ def cc_main(args: argparse.Namespace) -> int:
     entry_script = (exps_dir() / "slurm_array_entry.sh").resolve()
     job_name = spec.slurm.job_name or spec.name
 
-    chunks = list(chunk_ranges(args.start_id, end_id, args.chunk_size))
+    selected_ids = list(range(args.start_id, end_id + 1))
+    if args.resume:
+        selected_ids = filter_incomplete_task_ids(plan, selected_ids, result_root)
+
+    chunks = chunk_task_ids(selected_ids, args.chunk_size)
     LOGGER.info("SPEC=%s", spec.name)
     LOGGER.info("SPEC_FILE=%s", spec.path)
     LOGGER.info("TOTAL=%d", plan.total)
     LOGGER.info("SUBMIT_RANGE=%d-%d", args.start_id, end_id)
     LOGGER.info("CHUNK_SIZE=%d", args.chunk_size)
     LOGGER.info("ARRAY_PARALLEL=%d", array_parallel)
+    LOGGER.info("RESUME=%s", args.resume)
+    LOGGER.info("RESULT_ROOT=%s", result_root)
+    LOGGER.info("RUN_IDS=%d (first=%s, last=%s)", len(selected_ids), selected_ids[0] if selected_ids else "n/a", selected_ids[-1] if selected_ids else "n/a")
     LOGGER.info("CHUNKS=%d", len(chunks))
 
-    for idx, (chunk_start, chunk_end) in enumerate(chunks, start=1):
-        cmd: List[str] = ["sbatch", f"--array={chunk_start}-{chunk_end}%{array_parallel}"]
+    if not selected_ids:
+        return 0
+
+    for idx, chunk_ids in enumerate(chunks, start=1):
+        cmd: List[str] = ["sbatch", f"--array={slurm_array_spec(chunk_ids)}%{array_parallel}"]
 
         if job_name:
             cmd.append(f"--job-name={job_name}")
@@ -1358,6 +1483,8 @@ def cc_main(args: argparse.Namespace) -> int:
         cmd.extend(args.sbatch_arg)
         cmd.append(str(entry_script))
         cmd.append(str(spec.path))
+        if args.resume:
+            cmd.append("--resume")
 
         LOGGER.info("[%d/%d] %s", idx, len(chunks), format_command(cmd))
         if args.dry_run:
@@ -1450,7 +1577,7 @@ def build_parser() -> argparse.ArgumentParser:
     local_ap.add_argument("--gpu-tokens", type=int, default=1, help="Concurrency limit enforced with file locks.")
     local_ap.add_argument("--gpu-lock-dir", type=str, default="gpu_locks", help="Directory for GPU token lock files.")
     local_ap.add_argument("--gpu-lock-poll", type=float, default=1.0, help="Polling interval when waiting for a token.")
-    local_ap.add_argument("--resume", action="store_true", help="Skip tasks whose local log already ends with success.")
+    local_ap.add_argument("--resume", action="store_true", help="Skip tasks whose result directory is already complete.")
     local_ap.add_argument("--dry-run", action="store_true", help="Write local runner logs without launching workers.")
     local_ap.add_argument("--stop-on-fail", action="store_true", help="Stop after the first failing task.")
     local_ap.set_defaults(func=local_main)
@@ -1461,6 +1588,7 @@ def build_parser() -> argparse.ArgumentParser:
     cc_ap.add_argument("--array-parallel", type=int, default=None, help="Override spec.slurm.array_parallel.")
     cc_ap.add_argument("--start-id", type=int, default=0, help="First task id to submit.")
     cc_ap.add_argument("--end-id", type=int, default=None, help="Last task id to submit, inclusive.")
+    cc_ap.add_argument("--resume", action="store_true", help="Only submit task ids whose result directory is not complete.")
     cc_ap.add_argument("--sbatch-arg", action="append", default=[], help="Extra sbatch argument, e.g. --sbatch-arg=--qos=high.")
     cc_ap.add_argument("--dry-run", action="store_true", help="Print sbatch commands without submitting them.")
     cc_ap.set_defaults(func=cc_main)
@@ -1468,6 +1596,7 @@ def build_parser() -> argparse.ArgumentParser:
     worker_ap = sub.add_parser("worker", help=argparse.SUPPRESS)
     worker_ap.add_argument("spec", type=str, help="Spec path or spec name under exps/specs.")
     worker_ap.add_argument("--task-id", type=int, default=None, help="Explicit task id. Defaults to SLURM_ARRAY_TASK_ID.")
+    worker_ap.add_argument("--resume", action="store_true", help=argparse.SUPPRESS)
     worker_ap.set_defaults(func=worker_main)
 
     return ap

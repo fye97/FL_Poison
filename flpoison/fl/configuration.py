@@ -20,6 +20,7 @@ from flpoison.utils.global_utils import (
     queue_bootstrap_log,
     setup_console_logger,
 )
+from flpoison.utils.output_utils import METRICS_FILENAME
 
 
 KNOWN_ATTACKS = ['NoAttack'] + model_poisoning_attacks + data_poisoning_attacks
@@ -189,7 +190,12 @@ def single_preprocess(args):
 
     # generate output path if not provided
     if not hasattr(args, 'output') or args.output is None:
-        args.output = f'./logs/{args.algorithm}/{args.dataset}_{args.model}/{args.distribution}/{args.dataset}_{args.model}_{args.distribution}_{args.attack}_{args.defense}_{args.epochs}_{args.num_clients}_{args.learning_rate}_{args.algorithm}.txt'
+        args.output = (
+            f'./logs/{args.algorithm}/{args.dataset}_{args.model}/{args.distribution}/'
+            f'{args.dataset}_{args.model}_{args.distribution}_{args.attack}_{args.defense}_'
+            f'{args.epochs}_{args.num_clients}_{args.learning_rate}_{args.algorithm}_'
+            f'{METRICS_FILENAME}'
+        )
 
     # check output path, if exists, skip, otherwise create the directories
     os.makedirs(os.path.dirname(args.output), exist_ok=True)

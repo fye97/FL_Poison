@@ -99,7 +99,7 @@ def read_args():
         type=float,
         help="the proportion (float < 1) or number (int>1) of adversaries",
     )
-    parser.add_argument("--output", type=str, help="output file for results")
+    parser.add_argument("--output", type=str, help="output metrics file")
     parser.add_argument(
         "--log_stream",
         action="store_true",

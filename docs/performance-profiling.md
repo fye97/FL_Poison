@@ -125,20 +125,20 @@ python tests/perf/profile_single_run.py \
 以一次运行目录 `logs/perf_baseline/<timestamp>_FedSGD_MNIST_config/` 为例：
 
 - 运行命令与 stdout：
-  - `logs/perf_baseline/.../runner.stdout.log`
-- 训练日志：
-  - `logs/perf_baseline/.../single_run_exp0.txt`
+  - `logs/perf_baseline/.../run.log`
+- 每轮指标：
+  - `logs/perf_baseline/.../metrics.csv`
 - 性能 JSON：
-  - `logs/perf_logs/perf_baseline/.../single_run_exp0.json`
+  - `logs/perf_logs/perf_baseline/.../metrics.json`
 - 老的 time recorder 日志：
-  - `logs/time_logs/perf_baseline/.../single_run_exp0.log`
+  - `logs/time_logs/perf_baseline/.../metrics.log`
 - `torch.profiler` trace：
-  - `logs/torch_traces/perf_baseline/.../single_run_exp0/*.pt.trace.json`
+  - `logs/torch_traces/perf_baseline/.../metrics/*.pt.trace.json`
 
 其中最重要的是：
-- `runner.stdout.log`
-- `single_run_exp0.txt`
-- `single_run_exp0.json`
+- `run.log`
+- `metrics.csv`
+- `metrics.json`
 
 ---
 
@@ -277,7 +277,7 @@ val accuracy: 0.2562
 启用 `--torch-profile` 后，会输出 trace 文件：
 
 ```text
-logs/torch_traces/perf_baseline/.../single_run_exp0/*.pt.trace.json
+logs/torch_traces/perf_baseline/.../metrics/*.pt.trace.json
 ```
 
 可以用以下方式查看：

@@ -132,13 +132,13 @@ python -m flpoison \
 如果不显式指定 `--output`，单次训练默认把结果写到：
 
 ```text
-./logs/{algorithm}/{dataset}_{model}/{distribution}/{dataset}_{model}_{distribution}_{attack}_{defense}_{epochs}_{num_clients}_{learning_rate}_{algorithm}.txt
+./logs/{algorithm}/{dataset}_{model}/{distribution}/{dataset}_{model}_{distribution}_{attack}_{defense}_{epochs}_{num_clients}_{learning_rate}_{algorithm}_metrics.csv
 ```
 
 例如：
 
 ```text
-./logs/FedSGD/MNIST_lenet/iid/MNIST_lenet_iid_NoAttack_Mean_300_50_0.01_FedSGD.txt
+./logs/FedSGD/MNIST_lenet/iid/MNIST_lenet_iid_NoAttack_Mean_300_50_0.01_FedSGD_metrics.csv
 ```
 
 你也可以自己指定输出文件：
@@ -146,10 +146,15 @@ python -m flpoison \
 ```bash
 python -m flpoison \
   --config configs/FedSGD_MNIST_Lenet.yaml \
-  --output logs/manual_runs/mnist_smoke.txt
+  --output logs/manual_runs/mnist_smoke_metrics.csv
 ```
 
-默认命名规则、`exp{}` / `seed{}` 的改写逻辑，以及重复实验时如何避免覆盖，见 [配置手册](/config-manual)。
+`--output` 现在专门保存每个 epoch 的结构化指标：
+
+- 始终包含：`epoch,train_acc,train_loss`
+- 开启 `--evaluate` 时额外包含：`eval_acc,eval_loss`
+
+详细运行日志不会再混进这个 metrics 文件，而是自动写到对应的 `logs/run_logs/.../*.log`。默认命名规则、`exp{}` / `seed{}` 的改写逻辑，以及重复实验时如何避免覆盖，见 [配置手册](/config-manual)。
 
 ### 重复运行多个 seed
 
@@ -302,7 +307,7 @@ python exps/launch.py local <spec> ...
 - `--jobs N`: 同时启动的本地 worker 数
 - `--cuda 0`: 设置 `CUDA_VISIBLE_DEVICES`
 - `--gpu-tokens N`: 用文件锁限制同时占用 GPU 的 worker 数
-- `--resume`: 跳过已经成功结束的 task
+- `--resume`: 只补跑未完成的 task
 - `--dry-run`: 只生成 runner 日志，不真正启动 worker
 - `--stop-on-fail`: 遇到第一个失败任务就停止
 - `--log-dir <path>`: 修改本地 runner 日志目录
@@ -311,12 +316,20 @@ python exps/launch.py local <spec> ...
 
 本地批量运行会产生两类输出：
 
-- 实验结果：`logs/local_runs/...`
+- 实验结果：`logs/local_runs/.../<attack>__<defense>/<run-dir>/metrics.csv`
 - runner 日志：`logs/local_array/...`
 
-`logs/local_array/` 里每个 task 会有一个单独的 `*.out` 文件，记录该 task 的启动命令、开始时间、退出码和 worker 输出。
+每个 task 的结果目录里通常会有这些文件：
 
-实验结果文件名会包含数据集、模型、攻击、防御、seed 和 experiment id，便于后续筛选和汇总。
+- `metrics.csv`: 每个 epoch 的 train/eval 指标
+- `jobmeta.txt`: task 元数据、命令行、seed、输出路径
+- `run.log`: 训练过程的详细日志（由 worker 写入 `logs/run_logs/...` 同步过来）
+- `task.complete`: task 成功完成后的标记文件，`--resume` 会依赖它以及结果完整性检查来判断是否跳过
+
+`logs/local_array/` 里每个 task 仍然会有一个单独的 `*.out` 文件，记录 launcher 级别的启动命令、开始时间、退出码和 worker 输出。
+
+结果目录名会包含 epoch、client 数、学习率、adversary 数、seed、experiment id 和 config 名，便于后续筛选和汇总。
+因此，本地批量运行如果中断，重新执行同一个 spec 并加 `--resume`，会从未完成的 task 继续，而不是从头全部重跑。
 
 ### 本地运行时的默认行为
 

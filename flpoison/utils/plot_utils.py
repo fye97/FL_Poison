@@ -1,15 +1,48 @@
+import csv
 import re
 import matplotlib.pyplot as plt
 import numpy as np
 
 
+def _parse_metrics_csv(filename):
+    with open(filename, "r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        fieldnames = reader.fieldnames or []
+        if "epoch" not in fieldnames or "train_acc" not in fieldnames:
+            return None
+
+        rows = list(reader)
+
+    has_eval_metrics = any((row.get("eval_acc") or "").strip() for row in rows)
+    acc_key = "eval_acc" if has_eval_metrics else "train_acc"
+    loss_key = "eval_loss" if has_eval_metrics else "train_loss"
+    epochs, accs, losses = [], [], []
+    asrs, asr_losses = [], []
+
+    for row in rows:
+        epoch_text = (row.get("epoch") or "").strip()
+        acc_text = (row.get(acc_key) or "").strip()
+        loss_text = (row.get(loss_key) or "").strip()
+        if not epoch_text or not acc_text or not loss_text:
+            continue
+        epochs.append(int(epoch_text))
+        accs.append(float(acc_text))
+        losses.append(float(loss_text))
+        asrs.append(None)
+        asr_losses.append(None)
+
+    return epochs, accs, losses, asrs, asr_losses
+
+
 def parse_logs(filename):
     plt.clf()
-    # read log file
-    with open(filename, 'r') as f:
+    csv_metrics = _parse_metrics_csv(filename)
+    if csv_metrics is not None:
+        return csv_metrics
+
+    with open(filename, 'r', encoding='utf-8') as f:
         content = f.read()
     epochs, accs, losses, asrs, asr_losses = [], [], [], [], []
-    # regular expression pattern to extract epoch, test accuracy, test loss, asr, asr loss
     regex = (
         r"Epoch (?P<epoch>\d+)\s.*?Test Acc: (?P<test_acc>[\d\.]+)\s.*?Test loss: (?P<test_loss>[\d\.]+)(?:\s.*?ASR: (?P<asr>[\d\.]+))?(?:\s.*?ASR loss: (?P<asr_loss>[\d\.]+))?"
     )

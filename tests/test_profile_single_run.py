@@ -32,7 +32,7 @@ class _Args:
 
 
 def test_resolve_perf_json_finds_expected_file(tmp_path):
-    output_path = tmp_path / "logs" / "perf_baseline" / "run" / "single_run_exp0.txt"
+    output_path = tmp_path / "logs" / "perf_baseline" / "run" / "metrics.csv"
     perf_json = perf_summary_path(output_path)
     perf_json.parent.mkdir(parents=True, exist_ok=True)
     perf_json.write_text("{}", encoding="utf-8")
@@ -41,8 +41,8 @@ def test_resolve_perf_json_finds_expected_file(tmp_path):
 
 
 def test_resolve_perf_json_falls_back_to_single_candidate(tmp_path):
-    output_path = tmp_path / "logs" / "perf_baseline" / "run" / "single_run.txt"
-    fallback = perf_summary_path(output_path).parent / "single_run_exp0.json"
+    output_path = tmp_path / "logs" / "perf_baseline" / "run" / "metrics.csv"
+    fallback = perf_summary_path(output_path).parent / "metrics_exp0.json"
     fallback.parent.mkdir(parents=True, exist_ok=True)
     fallback.write_text("{}", encoding="utf-8")
 
