@@ -1,7 +1,7 @@
 # Edit the experiment matrix here.
 # Runtime choice is outside the spec:
-#   exps/run_local.sh omnibus
-#   exps/run_cc.sh omnibus --chunk-size 32
+#   exps/run_local.sh TriguardFL/omnibus
+#   exps/run_cc.sh TriguardFL/omnibus --chunk-size 32
 
 name: omnibus
 description: FedAvg omnibus benchmark across CIFAR10, CIFAR100, and TinyImageNet.

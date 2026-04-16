@@ -51,6 +51,7 @@ DEFAULT_LOCAL_RESULT_ROOT = "logs/local_runs"
 DEFAULT_SLURM_OUTPUT = "logs/slurm/%x_%A_%a.out"
 DEFAULT_SLURM_ERROR = "logs/slurm/%x_%A_%a.err"
 TASK_COMPLETE_FILENAME = "task.complete"
+SPEC_SUFFIXES = (".yaml", ".yml")
 LOGGER = setup_console_logger("flpoison.launch", level=logging.INFO)
 
 
@@ -159,6 +160,40 @@ def exps_dir() -> Path:
 
 def specs_dir() -> Path:
     return exps_dir() / "specs"
+
+
+def is_spec_file(path: Path) -> bool:
+    return path.is_file() and path.suffix.lower() in SPEC_SUFFIXES
+
+
+def spec_identifier_from_path(path: Path) -> str:
+    resolved = path.resolve()
+    try:
+        relative = resolved.relative_to(specs_dir().resolve())
+    except ValueError:
+        return str(resolved)
+
+    if relative.suffix.lower() in SPEC_SUFFIXES:
+        relative = relative.with_suffix("")
+    return relative.as_posix()
+
+
+def spec_slug_from_path(path: Path) -> str:
+    identifier = spec_identifier_from_path(path)
+    slug = identifier.replace("/", "__").replace("\\", "__")
+    return slug or path.stem
+
+
+def dedupe_paths(paths: Sequence[Path]) -> List[Path]:
+    out: List[Path] = []
+    seen: set[Path] = set()
+    for path in paths:
+        resolved = path.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        out.append(resolved)
+    return out
 
 
 def have_cmd(name: str) -> bool:
@@ -356,27 +391,53 @@ def load_spec(spec_identifier: str) -> ExperimentSpec:
 
 
 def resolve_spec_path(spec_identifier: str) -> Path:
-    candidate = Path(spec_identifier)
-    if candidate.exists():
-        return candidate.resolve()
+    candidate = Path(spec_identifier).expanduser()
+    matches: List[Path] = []
 
-    if candidate.suffix:
+    if candidate.exists() and is_spec_file(candidate):
+        matches.append(candidate)
+
+    specs_root = specs_dir().resolve()
+    if candidate.is_absolute():
+        matches = dedupe_paths(matches)
+        if matches:
+            return matches[0]
         raise FileNotFoundError(f"spec not found: {spec_identifier}")
 
-    for suffix in (".yaml", ".yml"):
-        path = specs_dir() / f"{spec_identifier}{suffix}"
-        if path.exists():
-            return path.resolve()
+    if candidate.suffix:
+        under_specs = specs_root / candidate
+        if is_spec_file(under_specs):
+            matches.append(under_specs)
+        matches = dedupe_paths(matches)
+        if matches:
+            return matches[0]
+        raise FileNotFoundError(f"spec not found: {spec_identifier}")
 
-    raise FileNotFoundError(f"spec not found: {spec_identifier}")
+    for suffix in SPEC_SUFFIXES:
+        direct = specs_root / candidate
+        direct = direct.with_suffix(suffix)
+        if is_spec_file(direct):
+            matches.append(direct)
+
+    if len(candidate.parts) == 1 and specs_root.is_dir():
+        for suffix in SPEC_SUFFIXES:
+            matches.extend(path for path in specs_root.rglob(f"{candidate.name}{suffix}") if is_spec_file(path))
+
+    matches = dedupe_paths(matches)
+    if not matches:
+        raise FileNotFoundError(f"spec not found: {spec_identifier}")
+    if len(matches) > 1:
+        choices = ", ".join(spec_identifier_from_path(path) for path in matches)
+        raise ValueError(f"ambiguous spec identifier `{spec_identifier}`; use one of: {choices}")
+    return matches[0]
 
 
 def list_spec_files() -> List[Path]:
     paths: List[Path] = []
     if specs_dir().is_dir():
         for suffix in ("*.yaml", "*.yml"):
-            paths.extend(sorted(specs_dir().glob(suffix)))
-    return sorted(set(path.resolve() for path in paths))
+            paths.extend(sorted(specs_dir().rglob(suffix)))
+    return dedupe_paths(sorted(paths))
 
 
 def resolve_config_for_scenario(root: Path, scenario: ScenarioSpec) -> Path:
@@ -1311,6 +1372,8 @@ def local_main(args: argparse.Namespace) -> int:
     plan = build_plan(spec)
     log_dir = (repo_root() / args.log_dir).resolve()
     result_root = result_root_for_platform(repo_root(), "local")
+    spec_id = spec_identifier_from_path(spec.path)
+    spec_slug = spec_slug_from_path(spec.path)
 
     if args.jobs < 1:
         LOGGER.error("--jobs must be >= 1")
@@ -1332,6 +1395,8 @@ def local_main(args: argparse.Namespace) -> int:
         ids = filter_incomplete_task_ids(plan, ids, result_root)
 
     LOGGER.info("SPEC=%s", spec.name)
+    LOGGER.info("SPEC_ID=%s", spec_id)
+    LOGGER.info("SPEC_FILE=%s", spec.path)
     LOGGER.info("TOTAL=%d", plan.total)
     LOGGER.info("RUN_IDS=%d (first=%s, last=%s)", len(ids), ids[0] if ids else 'n/a', ids[-1] if ids else 'n/a')
     LOGGER.info("LOG_DIR=%s", log_dir)
@@ -1349,7 +1414,7 @@ def local_main(args: argparse.Namespace) -> int:
     LOGGER.info("GPU_LOCK_DIR=%s GPU_LOCK_POLL=%s", token_lock_dir, args.gpu_lock_poll)
 
     def run_single(task_id: int) -> Tuple[int, int, Path]:
-        log_path = log_dir / f"{spec.name}_task{task_id}.out"
+        log_path = log_dir / f"{spec_slug}_task{task_id}.out"
         if args.gpu_tokens > 0:
             lock = TokenLock(token_lock_dir, args.gpu_tokens, args.gpu_lock_poll)
             with lock.acquire():
@@ -1360,7 +1425,7 @@ def local_main(args: argparse.Namespace) -> int:
 
     if args.jobs == 1:
         for idx, task_id in enumerate(ids, start=1):
-            log_path = log_dir / f"{spec.name}_task{task_id}.out"
+            log_path = log_dir / f"{spec_slug}_task{task_id}.out"
             LOGGER.info("[%d/%d] run task=%d -> %s", idx, len(ids), task_id, log_path)
             tid, rc, _ = run_single(task_id)
             if rc != 0:
@@ -1422,6 +1487,7 @@ def cc_main(args: argparse.Namespace) -> int:
     plan = build_plan(spec)
     root = repo_root()
     result_root = result_root_for_platform(root, "compute_canada")
+    spec_id = spec_identifier_from_path(spec.path)
 
     if args.chunk_size < 1:
         LOGGER.error("--chunk-size must be >= 1")
@@ -1440,7 +1506,7 @@ def cc_main(args: argparse.Namespace) -> int:
 
     array_parallel = args.array_parallel or spec.slurm.array_parallel
     entry_script = (exps_dir() / "slurm_array_entry.sh").resolve()
-    job_name = spec.slurm.job_name or spec.name
+    job_name = spec.slurm.job_name or spec_slug_from_path(spec.path)
 
     selected_ids = list(range(args.start_id, end_id + 1))
     if args.resume:
@@ -1448,6 +1514,7 @@ def cc_main(args: argparse.Namespace) -> int:
 
     chunks = chunk_task_ids(selected_ids, args.chunk_size)
     LOGGER.info("SPEC=%s", spec.name)
+    LOGGER.info("SPEC_ID=%s", spec_id)
     LOGGER.info("SPEC_FILE=%s", spec.path)
     LOGGER.info("TOTAL=%d", plan.total)
     LOGGER.info("SUBMIT_RANGE=%d-%d", args.start_id, end_id)
@@ -1517,6 +1584,7 @@ def cc_main(args: argparse.Namespace) -> int:
 def plan_main(args: argparse.Namespace) -> int:
     spec = load_spec(args.spec)
     plan = build_plan(spec)
+    spec_id = spec_identifier_from_path(spec.path)
 
     dims = {
         "scenarios": len(spec.scenarios),
@@ -1533,6 +1601,7 @@ def plan_main(args: argparse.Namespace) -> int:
     }
 
     LOGGER.info("SPEC=%s", spec.name)
+    LOGGER.info("SPEC_ID=%s", spec_id)
     LOGGER.info("SPEC_FILE=%s", spec.path)
     if spec.description:
         LOGGER.info("DESCRIPTION=%s", spec.description)
@@ -1545,20 +1614,20 @@ def plan_main(args: argparse.Namespace) -> int:
         config = scenario.config or preset_relpath(scenario.algorithm, scenario.dataset).as_posix()
         LOGGER.info("  %d: algorithm=%s dataset=%s config=%s", idx, scenario.algorithm, scenario.dataset, config)
     LOGGER.info("RUN_EXAMPLES")
-    LOGGER.info("  local: exps/run_local.sh %s", spec.path)
-    LOGGER.info("  cc:    exps/run_cc.sh %s", spec.path)
+    LOGGER.info("  local: exps/run_local.sh %s", spec_id)
+    LOGGER.info("  cc:    exps/run_cc.sh %s", spec_id)
     return 0
 
 
 def list_main(_: argparse.Namespace) -> int:
     for path in list_spec_files():
         raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-        name = normalize_text(raw.get("name") or path.stem).strip()
         description = normalize_text(raw.get("description")).strip()
+        identifier = spec_identifier_from_path(path)
         if description:
-            LOGGER.info("%s\t%s\t%s", name, path, description)
+            LOGGER.info("%s\t%s", identifier, description)
         else:
-            LOGGER.info("%s\t%s", name, path)
+            LOGGER.info("%s", identifier)
     return 0
 
 
@@ -1572,11 +1641,11 @@ def build_parser() -> argparse.ArgumentParser:
     list_ap.set_defaults(func=list_main)
 
     plan_ap = sub.add_parser("plan", help="Show the resolved size and shape of an experiment matrix.")
-    plan_ap.add_argument("spec", type=str, help="Spec path or spec name under exps/specs.")
+    plan_ap.add_argument("spec", type=str, help="Spec path, grouped spec id like TriguardFL/omnibus, or a unique bare spec name.")
     plan_ap.set_defaults(func=plan_main)
 
     local_ap = sub.add_parser("local", help="Run a spec locally by iterating task ids.")
-    local_ap.add_argument("spec", type=str, help="Spec path or spec name under exps/specs.")
+    local_ap.add_argument("spec", type=str, help="Spec path, grouped spec id like TriguardFL/omnibus, or a unique bare spec name.")
     local_ap.add_argument("--ids", type=str, default="all", help='Task ids to run, e.g. "0-31", "0,3,8-10", or "all".')
     local_ap.add_argument("--log-dir", type=str, default=DEFAULT_LOCAL_LOG_DIR, help="Per-task local runner logs.")
     local_ap.add_argument("--cuda", type=str, default="0", help='Value for CUDA_VISIBLE_DEVICES (default: "0").')
@@ -1590,7 +1659,7 @@ def build_parser() -> argparse.ArgumentParser:
     local_ap.set_defaults(func=local_main)
 
     cc_ap = sub.add_parser("cc", help="Submit a spec to Compute Canada in chunked Slurm arrays.")
-    cc_ap.add_argument("spec", type=str, help="Spec path or spec name under exps/specs.")
+    cc_ap.add_argument("spec", type=str, help="Spec path, grouped spec id like TriguardFL/omnibus, or a unique bare spec name.")
     cc_ap.add_argument("--chunk-size", type=int, default=32, help="Number of task ids per sbatch submission.")
     cc_ap.add_argument("--array-parallel", type=int, default=None, help="Override spec.slurm.array_parallel.")
     cc_ap.add_argument("--start-id", type=int, default=0, help="First task id to submit.")

@@ -11,8 +11,8 @@ Usage:
   exps/run_local.sh <spec> [local args...]
 
 Examples:
-  exps/run_local.sh smoke_mnist --ids 0 --jobs 1
-  exps/run_local.sh cifar10 --ids 0-7 --jobs 1 --resume
+  exps/run_local.sh TriguardFL/smoke_mnist --ids 0 --jobs 1
+  exps/run_local.sh TriguardFL/e1_cifar10 --ids 0-7 --jobs 1 --resume
 EOF
 }
 

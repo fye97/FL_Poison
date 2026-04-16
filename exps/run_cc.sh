@@ -11,9 +11,9 @@ Usage:
   exps/run_cc.sh <spec> [cc args...]
 
 Examples:
-  exps/run_cc.sh smoke_mnist --chunk-size 1 --dry-run
-  exps/run_cc.sh cifar10 --chunk-size 32
-  exps/run_cc.sh cifar10 --start-id 0 --end-id 63 --chunk-size 16
+  exps/run_cc.sh TriguardFL/smoke_mnist --chunk-size 1 --dry-run
+  exps/run_cc.sh TriguardFL/omnibus --chunk-size 32
+  exps/run_cc.sh TriguardFL/omnibus --start-id 0 --end-id 63 --chunk-size 16
 EOF
 }
 
