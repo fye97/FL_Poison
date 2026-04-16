@@ -6,6 +6,7 @@ import csv
 import logging
 import os
 import queue
+import re
 import shlex
 import shutil
 import signal
@@ -97,6 +98,7 @@ class SlurmSpec:
     mail_user: str = ""
     mail_type: str = ""
     array_parallel: int = 1
+    chunk_size: Optional[int] = None
     job_name: str = ""
 
 
@@ -152,6 +154,14 @@ class ExperimentPlan:
     @property
     def total(self) -> int:
         return len(self.tasks)
+
+
+@dataclass(frozen=True)
+class CCSubmissionSummary:
+    spec_id: str
+    spec_slug: str
+    submitted_job_ids: Tuple[str, ...]
+    had_selected_ids: bool
 
 
 def repo_root() -> Path:
@@ -262,6 +272,12 @@ def parse_positive_int(value: Any, *, field_name: str) -> int:
     if out < 1:
         raise ValueError(f"{field_name} must be >= 1, got: {value}")
     return out
+
+
+def parse_optional_positive_int(value: Any, *, field_name: str) -> Optional[int]:
+    if value in (None, ""):
+        return None
+    return parse_positive_int(value, field_name=field_name)
 
 
 def parse_distribution_matrix(raw: Any) -> Tuple[DistributionChoice, ...]:
@@ -389,6 +405,7 @@ def load_spec(spec_identifier: str) -> ExperimentSpec:
             mail_user=normalize_text(slurm_raw.get("mail_user")).strip(),
             mail_type=normalize_text(slurm_raw.get("mail_type")).strip(),
             array_parallel=parse_positive_int(slurm_raw.get("array_parallel", 1), field_name="slurm.array_parallel"),
+            chunk_size=parse_optional_positive_int(slurm_raw.get("chunk_size"), field_name="slurm.chunk_size"),
             job_name=normalize_text(slurm_raw.get("job_name")).strip(),
         ),
         evaluate=parse_bool(raw.get("evaluate", True), default=True),
@@ -776,6 +793,82 @@ def slurm_array_spec(task_ids: Sequence[int]) -> str:
         start = prev = value
     segments.append(f"{start}-{prev}" if start != prev else str(start))
     return ",".join(segments)
+
+
+SBATCH_JOB_ID_RE = re.compile(r"Submitted batch job (\d+)")
+
+
+def parse_sbatch_job_id(output: str) -> Optional[str]:
+    match = SBATCH_JOB_ID_RE.search(output or "")
+    if not match:
+        return None
+    return match.group(1)
+
+
+def resolve_cc_chunk_size(spec: ExperimentSpec, cli_chunk_size: Optional[int]) -> int:
+    chunk_size = cli_chunk_size if cli_chunk_size is not None else spec.slurm.chunk_size
+    if chunk_size is None:
+        chunk_size = 32
+    if chunk_size < 1:
+        raise ValueError("chunk size must be >= 1")
+    return chunk_size
+
+
+def format_afterok_dependency(job_ids: Sequence[str]) -> str:
+    if not job_ids:
+        raise ValueError("afterok dependency requires at least one job id")
+    return f"afterok:{':'.join(job_ids)}"
+
+
+def dry_run_dependency_placeholder(spec_slug: str) -> str:
+    return f"afterok:<{spec_slug}_JOBIDS>"
+
+
+def build_cc_sbatch_command(
+    *,
+    spec: ExperimentSpec,
+    chunk_ids: Sequence[int],
+    array_parallel: int,
+    root: Path,
+    entry_script: Path,
+    sbatch_args: Sequence[str],
+    resume: bool,
+    dependency_text: str = "",
+) -> List[str]:
+    cmd: List[str] = ["sbatch", f"--array={slurm_array_spec(chunk_ids)}%{array_parallel}"]
+    if dependency_text:
+        cmd.append(f"--dependency={dependency_text}")
+
+    job_name = spec.slurm.job_name or spec_slug_from_path(spec.path)
+    if job_name:
+        cmd.append(f"--job-name={job_name}")
+    if spec.slurm.account:
+        cmd.append(f"--account={spec.slurm.account}")
+    if spec.slurm.time:
+        cmd.append(f"--time={spec.slurm.time}")
+    if spec.slurm.gpus:
+        cmd.append(f"--gpus={spec.slurm.gpus}")
+    if spec.slurm.cpus_per_task:
+        cmd.append(f"--cpus-per-task={spec.slurm.cpus_per_task}")
+    if spec.slurm.mem:
+        cmd.append(f"--mem={spec.slurm.mem}")
+    if spec.slurm.output:
+        cmd.append(f"--output={resolve_slurm_path(spec.slurm.output, root)}")
+    if spec.slurm.error:
+        cmd.append(f"--error={resolve_slurm_path(spec.slurm.error, root)}")
+    if spec.slurm.mail_user:
+        cmd.append(f"--mail-user={spec.slurm.mail_user}")
+    if spec.slurm.mail_type:
+        cmd.append(f"--mail-type={spec.slurm.mail_type}")
+    if spec.slurm.requeue:
+        cmd.append("--requeue")
+
+    cmd.extend(sbatch_args)
+    cmd.append(str(entry_script))
+    cmd.append(str(spec.path))
+    if resume:
+        cmd.append("--resume")
+    return cmd
 
 
 def format_command(cmd: Sequence[str]) -> str:
@@ -1516,83 +1609,66 @@ def local_main(args: argparse.Namespace) -> int:
     return 0
 
 
-def cc_main(args: argparse.Namespace) -> int:
-    spec = load_spec(args.spec)
+def submit_cc_spec(
+    args: argparse.Namespace,
+    *,
+    spec_identifier: str,
+    dependency_text: str = "",
+) -> CCSubmissionSummary:
+    spec = load_spec(spec_identifier)
     plan = build_plan(spec)
     root = repo_root()
     result_root = result_root_for_platform(root, "compute_canada")
     spec_id = spec_identifier_from_path(spec.path)
+    spec_slug = spec_slug_from_path(spec.path)
 
-    if args.chunk_size < 1:
-        LOGGER.error("--chunk-size must be >= 1")
-        return 2
     if args.start_id < 0:
-        LOGGER.error("--start-id must be >= 0")
-        return 2
+        raise ValueError("--start-id must be >= 0")
 
     end_id = plan.total - 1 if args.end_id is None else args.end_id
     if end_id < args.start_id:
-        LOGGER.error("--end-id must be >= --start-id")
-        return 2
+        raise ValueError("--end-id must be >= --start-id")
     if end_id >= plan.total:
-        LOGGER.error("--end-id must be <= %d", plan.total - 1)
-        return 2
+        raise ValueError(f"--end-id must be <= {plan.total - 1}")
 
     array_parallel = args.array_parallel or spec.slurm.array_parallel
+    chunk_size = resolve_cc_chunk_size(spec, args.chunk_size)
     entry_script = (exps_dir() / "slurm_array_entry.sh").resolve()
-    job_name = spec.slurm.job_name or spec_slug_from_path(spec.path)
 
     selected_ids = list(range(args.start_id, end_id + 1))
     if args.resume:
         selected_ids = filter_incomplete_task_ids(plan, selected_ids, result_root)
 
-    chunks = chunk_task_ids(selected_ids, args.chunk_size)
+    chunks = chunk_task_ids(selected_ids, chunk_size)
     LOGGER.info("SPEC=%s", spec.name)
     LOGGER.info("SPEC_ID=%s", spec_id)
     LOGGER.info("SPEC_FILE=%s", spec.path)
     LOGGER.info("TOTAL=%d", plan.total)
     LOGGER.info("SUBMIT_RANGE=%d-%d", args.start_id, end_id)
-    LOGGER.info("CHUNK_SIZE=%d", args.chunk_size)
+    LOGGER.info("CHUNK_SIZE=%d", chunk_size)
     LOGGER.info("ARRAY_PARALLEL=%d", array_parallel)
     LOGGER.info("RESUME=%s", args.resume)
     LOGGER.info("RESULT_ROOT=%s", result_root)
+    LOGGER.info("DEPENDENCY=%s", dependency_text or "none")
     LOGGER.info("RUN_IDS=%d (first=%s, last=%s)", len(selected_ids), selected_ids[0] if selected_ids else "n/a", selected_ids[-1] if selected_ids else "n/a")
     LOGGER.info("CHUNKS=%d", len(chunks))
 
     if not selected_ids:
-        return 0
+        LOGGER.info("SKIP_SUBMIT no task ids selected")
+        return CCSubmissionSummary(spec_id=spec_id, spec_slug=spec_slug, submitted_job_ids=tuple(), had_selected_ids=False)
 
+    submitted_job_ids: List[str] = []
     for idx, chunk_ids in enumerate(chunks, start=1):
-        cmd: List[str] = ["sbatch", f"--array={slurm_array_spec(chunk_ids)}%{array_parallel}"]
-
-        if job_name:
-            cmd.append(f"--job-name={job_name}")
-        if spec.slurm.account:
-            cmd.append(f"--account={spec.slurm.account}")
-        if spec.slurm.time:
-            cmd.append(f"--time={spec.slurm.time}")
-        if spec.slurm.gpus:
-            cmd.append(f"--gpus={spec.slurm.gpus}")
-        if spec.slurm.cpus_per_task:
-            cmd.append(f"--cpus-per-task={spec.slurm.cpus_per_task}")
-        if spec.slurm.mem:
-            cmd.append(f"--mem={spec.slurm.mem}")
-        if spec.slurm.output:
-            cmd.append(f"--output={resolve_slurm_path(spec.slurm.output, root)}")
-        if spec.slurm.error:
-            cmd.append(f"--error={resolve_slurm_path(spec.slurm.error, root)}")
-        if spec.slurm.mail_user:
-            cmd.append(f"--mail-user={spec.slurm.mail_user}")
-        if spec.slurm.mail_type:
-            cmd.append(f"--mail-type={spec.slurm.mail_type}")
-        if spec.slurm.requeue:
-            cmd.append("--requeue")
-
-        cmd.extend(args.sbatch_arg)
-        cmd.append(str(entry_script))
-        cmd.append(str(spec.path))
-        if args.resume:
-            cmd.append("--resume")
+        cmd = build_cc_sbatch_command(
+            spec=spec,
+            chunk_ids=chunk_ids,
+            array_parallel=array_parallel,
+            root=root,
+            entry_script=entry_script,
+            sbatch_args=args.sbatch_arg,
+            resume=args.resume,
+            dependency_text=dependency_text,
+        )
 
         LOGGER.info("[%d/%d] %s", idx, len(chunks), format_command(cmd))
         if args.dry_run:
@@ -1610,8 +1686,43 @@ def cc_main(args: argparse.Namespace) -> int:
         if output:
             LOGGER.info(output)
         if proc.returncode != 0:
-            return int(proc.returncode)
+            raise RuntimeError(f"sbatch failed for {spec_id} chunk {idx}/{len(chunks)} with rc={proc.returncode}")
+        job_id = parse_sbatch_job_id(output)
+        if job_id:
+            submitted_job_ids.append(job_id)
 
+    return CCSubmissionSummary(
+        spec_id=spec_id,
+        spec_slug=spec_slug,
+        submitted_job_ids=tuple(submitted_job_ids),
+        had_selected_ids=True,
+    )
+
+
+def cc_main(args: argparse.Namespace) -> int:
+    if args.chunk_size is not None and args.chunk_size < 1:
+        LOGGER.error("--chunk-size must be >= 1")
+        return 2
+    if args.start_id < 0:
+        LOGGER.error("--start-id must be >= 0")
+        return 2
+    if len(args.specs) > 1 and (args.start_id != 0 or args.end_id is not None):
+        LOGGER.error("--start-id/--end-id only support single-spec submissions")
+        return 2
+
+    dependency_text = ""
+    for spec_identifier in args.specs:
+        summary = submit_cc_spec(args, spec_identifier=spec_identifier, dependency_text=dependency_text)
+        if args.chain_specs:
+            if args.dry_run and summary.had_selected_ids:
+                dependency_text = dry_run_dependency_placeholder(summary.spec_slug)
+                continue
+            if summary.submitted_job_ids:
+                dependency_text = format_afterok_dependency(summary.submitted_job_ids)
+                continue
+            if summary.had_selected_ids:
+                LOGGER.error("unable to parse submitted job ids for %s", summary.spec_id)
+                return 1
     return 0
 
 
@@ -1692,13 +1803,19 @@ def build_parser() -> argparse.ArgumentParser:
     local_ap.add_argument("--stop-on-fail", action="store_true", help="Stop after the first failing task.")
     local_ap.set_defaults(func=local_main)
 
-    cc_ap = sub.add_parser("cc", help="Submit a spec to Compute Canada in chunked Slurm arrays.")
-    cc_ap.add_argument("spec", type=str, help="Spec path, grouped spec id like TriguardFL/omnibus, or a unique bare spec name.")
-    cc_ap.add_argument("--chunk-size", type=int, default=32, help="Number of task ids per sbatch submission.")
+    cc_ap = sub.add_parser("cc", help="Submit one or more specs to Compute Canada in chunked Slurm arrays.")
+    cc_ap.add_argument("specs", nargs="+", type=str, help="One or more spec paths / ids.")
+    cc_ap.add_argument("--chunk-size", type=int, default=None, help="Override the chunk size for every submitted spec.")
     cc_ap.add_argument("--array-parallel", type=int, default=None, help="Override spec.slurm.array_parallel.")
     cc_ap.add_argument("--start-id", type=int, default=0, help="First task id to submit.")
     cc_ap.add_argument("--end-id", type=int, default=None, help="Last task id to submit, inclusive.")
     cc_ap.add_argument("--resume", action="store_true", help="Only submit task ids whose result directory is not complete.")
+    cc_ap.add_argument(
+        "--chain-specs",
+        "--serial-specs",
+        action="store_true",
+        help="If multiple specs are provided, submit them as an afterok dependency chain.",
+    )
     cc_ap.add_argument("--sbatch-arg", action="append", default=[], help="Extra sbatch argument, e.g. --sbatch-arg=--qos=high.")
     cc_ap.add_argument("--dry-run", action="store_true", help="Print sbatch commands without submitting them.")
     cc_ap.set_defaults(func=cc_main)

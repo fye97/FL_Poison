@@ -8,20 +8,18 @@ repo_root="$(cd "${script_dir}/.." && pwd)"
 usage() {
   cat <<'EOF'
 Usage:
-  exps/run_cc.sh <spec> [cc args...]
-  exps/run_cc.sh <spec1> <spec2> ... --chain-specs [cc args...]
+  exps/run_cc_carat.sh [cc args...]
 
 Examples:
-  exps/run_cc.sh TriguardFL/smoke_mnist --chunk-size 1 --dry-run
-  exps/run_cc.sh TriguardFL/omnibus --chunk-size 32
-  exps/run_cc.sh TriguardFL/omnibus --start-id 0 --end-id 63 --chunk-size 16
-  exps/run_cc.sh CARAT/clean_reference CARAT/pilot_untargeted --chain-specs --dry-run
+  exps/run_cc_carat.sh --dry-run
+  exps/run_cc_carat.sh
+  exps/run_cc_carat.sh --resume
 EOF
 }
 
-if [ $# -lt 1 ]; then
-  usage >&2
-  exit 2
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+  usage
+  exit 0
 fi
 
 if [ -n "${PYTHON_BIN:-}" ]; then
@@ -39,4 +37,11 @@ export PYTHON_BIN="${py_bin}"
 
 mkdir -p "${repo_root}/logs/slurm"
 
-exec "${py_bin}" "${script_dir}/launch.py" cc "$@"
+exec "${py_bin}" "${script_dir}/launch.py" cc \
+  --chain-specs \
+  CARAT/clean_reference \
+  CARAT/pilot_untargeted \
+  CARAT/main_untargeted \
+  CARAT/backdoor \
+  CARAT/ablations \
+  "$@"

@@ -51,4 +51,5 @@ slurm:
   error: logs/slurm/%x_%A_%a.err
   mail_user: fengye@uvic.ca
   mail_type: ALL
+  chunk_size: 12
   array_parallel: 2

@@ -91,6 +91,7 @@ python exps/launch.py plan CARAT/ablations
 ```bash
 ./exps/run_cc.sh CARAT/smoke_cifar100 --chunk-size 1 --dry-run
 ./exps/run_cc.sh CARAT/main_untargeted --chunk-size 24 --dry-run
+./exps/run_cc_carat.sh --dry-run
 ```
 
 正式提交常用命令：
@@ -101,6 +102,26 @@ python exps/launch.py plan CARAT/ablations
 ./exps/run_cc.sh CARAT/main_untargeted --chunk-size 24
 ./exps/run_cc.sh CARAT/backdoor --chunk-size 16
 ./exps/run_cc.sh CARAT/ablations --chunk-size 16
+```
+
+如果要按推荐顺序一条命令串行提交完整 CARAT 主实验：
+
+```bash
+./exps/run_cc_carat.sh
+```
+
+这个脚本会按下面顺序提交，并用 `afterok` 串起来：
+
+1. `CARAT/clean_reference`
+2. `CARAT/pilot_untargeted`
+3. `CARAT/main_untargeted`
+4. `CARAT/backdoor`
+5. `CARAT/ablations`
+
+补跑缺失结果时：
+
+```bash
+./exps/run_cc_carat.sh --resume
 ```
 
 如果只提交矩阵中的一段：
