@@ -69,7 +69,7 @@ runtime:
 
 slurm:
   account: def-lincai
-  time: 0-18:00:00
+  time: 0-03:00:00
   gpus: nvidia_h100_80gb_hbm3_2g.20gb:1
   cpus_per_task: 8
   mem: 64G
