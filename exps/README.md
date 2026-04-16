@@ -83,6 +83,7 @@ python exps/launch.py local <spec> ...
 
 - 本地如果 CUDA 不可用，允许回退到 CPU/MPS
 - 如果 spec 里显式设置 `runtime.require_cuda: true`，本地也会强制要求 CUDA
+- `exps` 启动的任务默认会显式传 `--evaluate`；如果某个 spec 需要关闭，顶层写 `evaluate: false`
 
 ## Compute Canada Runs
 
@@ -187,6 +188,7 @@ slurm:
 - `matrix.num_advs` 是攻击者比例或数量 sweep
 - `repeats.count/start` 会展开成不同的 `experiment_id` 和有效 seed
 - `runtime.require_cuda` 可选；不写时，本地默认 `false`，Compute Canada 默认 `true`
+- 顶层 `evaluate` 控制 launcher 是否显式传 `--evaluate` / `--no-evaluate`；默认 `true`
 
 ## Smoke Test
 

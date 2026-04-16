@@ -113,6 +113,7 @@ class ExperimentSpec:
     experiment_ids: Tuple[int, ...]
     runtime: RuntimeSpec
     slurm: SlurmSpec
+    evaluate: bool = True
 
 
 @dataclass(frozen=True)
@@ -350,6 +351,7 @@ def load_spec(spec_identifier: str) -> ExperimentSpec:
             array_parallel=parse_positive_int(slurm_raw.get("array_parallel", 1), field_name="slurm.array_parallel"),
             job_name=normalize_text(slurm_raw.get("job_name")).strip(),
         ),
+        evaluate=parse_bool(raw.get("evaluate", True), default=True),
     )
 
 
@@ -900,6 +902,7 @@ def task_command(
     task: ExperimentTask,
     runtime: RuntimeSpec,
     output_file: Path,
+    evaluate: bool,
 ) -> List[str]:
     cmd = [
         python_bin,
@@ -938,6 +941,7 @@ def task_command(
         "--output",
         str(output_file),
     ]
+    cmd.append("--evaluate" if evaluate else "--no-evaluate")
     if task.distribution == "non-iid" and task.dirichlet_alpha:
         cmd.extend(["--dirichlet_alpha", task.dirichlet_alpha])
     if task.distribution == "class-imbalanced_iid" and task.im_iid_gamma:
@@ -1033,6 +1037,7 @@ def worker_main(args: argparse.Namespace) -> int:
         task=task,
         runtime=spec.runtime,
         output_file=runtime_output_file,
+        evaluate=spec.evaluate,
     )
 
     log_block(
@@ -1063,6 +1068,7 @@ def worker_main(args: argparse.Namespace) -> int:
             f"num_adv={task.num_adv} base_seed={task.seed_base} effective_seed={task.effective_seed}",
             f"experiment_id={task.experiment_id}",
             f"attack={task.attack} defense={task.defense}",
+            f"evaluate={spec.evaluate}",
         ],
     )
 
@@ -1100,6 +1106,7 @@ def worker_main(args: argparse.Namespace) -> int:
             ("config_file", str(config_path)),
             ("cuda_required", str(require_cuda)),
             ("cuda_probe_ok", str(cuda_ok)),
+            ("evaluate", str(spec.evaluate)),
             ("experiment_id", str(task.experiment_id)),
             ("base_seed", str(task.seed_base)),
             ("effective_seed", str(task.effective_seed)),
