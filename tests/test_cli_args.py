@@ -82,6 +82,18 @@ def test_read_args_no_evaluate_disables_evaluation(monkeypatch):
     assert cli_args.evaluate is False
 
 
+def test_read_args_no_log_stream_disables_console_stream(monkeypatch):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["flpoison", "--config", "configs/FedSGD_MNIST_Lenet.yaml", "--no-log_stream"],
+    )
+
+    _, cli_args = read_args()
+
+    assert cli_args.log_stream is False
+
+
 def test_read_args_no_log_color_disables_color(monkeypatch):
     monkeypatch.setattr(
         sys,

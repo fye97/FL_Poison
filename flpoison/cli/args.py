@@ -102,7 +102,7 @@ def read_args():
     parser.add_argument("--output", type=str, help="output metrics file")
     parser.add_argument(
         "--log_stream",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
         default=None,
         help="Enable logging to stdout (tqdm-safe).",
     )

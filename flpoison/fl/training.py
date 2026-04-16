@@ -19,7 +19,6 @@ from flpoison.utils.global_utils import (
     setup_seed,
 )
 from flpoison.utils.output_utils import EpochMetricsWriter, run_log_path
-from flpoison.utils.plot_utils import plot_accuracy
 from flpoison.utils.performance_utils import RuntimeProfiler, create_torch_profiler, summarize_torch_profiler
 
 
@@ -213,8 +212,6 @@ def fl_run(args):
         runtime_profiler.finalize()
     if torch_profiler is not None:
         summarize_torch_profiler(torch_profiler, args.logger, args.device)
-
-    plot_accuracy(args.output)
 
     end_time = time.time()
     time_difference = end_time - start_time

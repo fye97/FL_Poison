@@ -10,7 +10,6 @@ from torchvision import datasets, transforms
 from torchvision.transforms import functional as transform_f
 from flpoison.datapreprocessor.cinic10 import CINIC10
 from flpoison.datapreprocessor.chmnist import CHMNIST
-from flpoison.utils.plot_utils import plot_label_distribution
 from flpoison.datapreprocessor.tinyimagenet import TinyImageNet
 from flpoison.datapreprocessor.har import HAR
 from flpoison.utils.global_utils import get_context_logger
@@ -197,7 +196,6 @@ def split_dataset(args, train_dataset, test_dataset):
         #         args, test_dataset, test_class_indices)
     args.logger.info(f"{args.distribution} partition finished")
     # plot the visualization of label distribution of the clients
-    # plot_label_distribution(train_dataset, client_indices, args.num_clients, args.dataset, args.distribution)
     return client_indices, test_dataset
 
 

@@ -110,3 +110,33 @@ def test_task_command_emits_evaluate_override():
     assert "--no-evaluate" not in enabled
     assert "--no-evaluate" in disabled
     assert "--evaluate" not in disabled
+
+
+def test_task_command_disables_log_stream_by_default_for_batch_workers():
+    cmd = task_command(
+        python_bin="python",
+        run_repo=Path("/tmp/repo"),
+        config_path=Path("configs/FedAvg_MNIST_Lenet.yaml"),
+        task=_task(),
+        runtime=RuntimeSpec(),
+        output_file=Path("logs/out.csv"),
+        evaluate=True,
+    )
+
+    assert "--no-log_stream" in cmd
+    assert "--log_stream" not in cmd
+
+
+def test_task_command_allows_runtime_override_to_enable_log_stream():
+    cmd = task_command(
+        python_bin="python",
+        run_repo=Path("/tmp/repo"),
+        config_path=Path("configs/FedAvg_MNIST_Lenet.yaml"),
+        task=_task(),
+        runtime=RuntimeSpec(log_stream=True),
+        output_file=Path("logs/out.csv"),
+        evaluate=True,
+    )
+
+    assert "--log_stream" in cmd
+    assert "--no-log_stream" not in cmd

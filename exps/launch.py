@@ -52,7 +52,10 @@ DEFAULT_SLURM_OUTPUT = "logs/slurm/%x_%A_%a.out"
 DEFAULT_SLURM_ERROR = "logs/slurm/%x_%A_%a.err"
 TASK_COMPLETE_FILENAME = "task.complete"
 SPEC_SUFFIXES = (".yaml", ".yml")
-LOGGER = setup_console_logger("flpoison.launch", level=logging.INFO)
+LOGGER = setup_console_logger(
+    "flpoison.launch",
+    level=logging.ERROR if os.environ.get("FLPOISON_LAUNCH_SILENT") == "1" else logging.INFO,
+)
 
 
 @dataclass(frozen=True)
@@ -73,6 +76,7 @@ class DistributionChoice:
 class RuntimeSpec:
     gpu_idx: int = 0
     num_workers: Optional[int] = None
+    log_stream: Optional[bool] = None
     require_cuda: Optional[bool] = None
     cuda_retry_max: int = 3
     cuda_retry_sleep: int = 20
@@ -366,6 +370,7 @@ def load_spec(spec_identifier: str) -> ExperimentSpec:
                 None if runtime_raw.get("num_workers") in (None, "")
                 else parse_positive_int(runtime_raw.get("num_workers"), field_name="runtime.num_workers")
             ),
+            log_stream=parse_optional_bool(runtime_raw.get("log_stream")),
             require_cuda=parse_optional_bool(runtime_raw.get("require_cuda")),
             cuda_retry_max=parse_positive_int(runtime_raw.get("cuda_retry_max", 3), field_name="runtime.cuda_retry_max"),
             cuda_retry_sleep=parse_positive_int(runtime_raw.get("cuda_retry_sleep", 20), field_name="runtime.cuda_retry_sleep"),
@@ -983,6 +988,7 @@ def task_command(
     output_file: Path,
     evaluate: bool,
 ) -> List[str]:
+    stream_logs = runtime.log_stream if runtime.log_stream is not None else False
     cmd = [
         python_bin,
         "-u",
@@ -1019,6 +1025,7 @@ def task_command(
         str(runtime.gpu_idx),
         "--output",
         str(output_file),
+        "--log_stream" if stream_logs else "--no-log_stream",
     ]
     cmd.append("--evaluate" if evaluate else "--no-evaluate")
     if task.distribution == "non-iid" and task.dirichlet_alpha:
@@ -1375,7 +1382,16 @@ def local_worker_run_task(
             handle.write("LOCAL_ARRAY_EXIT_CODE=0\n")
             return 0
 
-        proc = subprocess.Popen(cmd, cwd=str(repo_root()), env=env, stdout=handle, stderr=subprocess.STDOUT, text=True)
+        worker_env = env.copy()
+        worker_env.setdefault("FLPOISON_LAUNCH_SILENT", "1")
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(repo_root()),
+            env=worker_env,
+            stdout=handle,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
         rc = proc.wait()
         ended = time.time()
         handle.write("\n")

@@ -92,3 +92,4 @@ def test_single_preprocess_defaults_output_to_metrics_csv(monkeypatch):
     single_preprocess(args)
 
     assert args.output.endswith("_FedSGD_metrics.csv")
+    assert args.log_stream is True

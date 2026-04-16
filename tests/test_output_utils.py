@@ -9,12 +9,12 @@ if str(ROOT) not in sys.path:
 
 from flpoison.utils.output_utils import (
     EpochMetricsWriter,
+    parse_logs,
     perf_summary_path,
     run_log_path,
     time_log_path,
     torch_trace_dir,
 )
-from flpoison.utils.plot_utils import parse_logs
 
 
 def test_epoch_metrics_writer_writes_train_only_rows(tmp_path):
