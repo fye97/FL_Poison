@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, List
+from typing import List
 
 import numpy as np
 import torch
@@ -131,6 +131,16 @@ def _weighted_average_vectors(vectors, weights):
     return np.average(vectors, axis=0, weights=weights)
 
 
+def _normalize_to_radius(vectors, radius: float, eps: float = 1.0e-12):
+    if radius <= 0.0 or not np.isfinite(radius):
+        return vectors * 0.0
+    if torch.is_tensor(vectors):
+        norms = torch.linalg.vector_norm(vectors, dim=1, keepdim=True)
+        return vectors * (float(radius) / (norms + eps))
+    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+    return vectors * (float(radius) / (norms + eps))
+
+
 def _resolve_rho_hat(num_clients: int, num_adv, default_rho_hat: float) -> float:
     if num_clients <= 1:
         return 0.0
@@ -188,7 +198,26 @@ def _softmin_value_and_task_weights(task_scores: np.ndarray, beta: float) -> tup
     return float(softmin), probs
 
 
-def _sample_rank_penalties(deltas: np.ndarray, num_coords: int) -> np.ndarray:
+def _robust_standardize_columns(matrix: np.ndarray, eps: float = 1.0e-12) -> np.ndarray:
+    arr = np.asarray(matrix, dtype=np.float64)
+    if arr.size == 0:
+        return np.zeros_like(arr, dtype=np.float64)
+    center = np.median(arr, axis=0)
+    scale = 1.4826 * np.median(np.abs(arr - center), axis=0)
+    scale = np.where(np.isfinite(scale) & (scale > eps), scale, 1.0)
+    return (arr - center) / scale
+
+
+def _robust_positive_penalty(values: np.ndarray, eps: float = 1.0e-12) -> np.ndarray:
+    arr = np.asarray(values, dtype=np.float64)
+    if arr.size == 0:
+        return np.zeros_like(arr, dtype=np.float64)
+    med, mad = _robust_median_mad(arr)
+    scale = max(1.4826 * mad, eps)
+    return np.maximum((arr - med) / scale, 0.0)
+
+
+def _sample_rank_penalties_once(deltas: np.ndarray, num_coords: int) -> np.ndarray:
     num_clients, dim = deltas.shape
     if num_clients <= 1 or dim == 0:
         return np.zeros(num_clients, dtype=np.float64)
@@ -206,45 +235,29 @@ def _sample_rank_penalties(deltas: np.ndarray, num_coords: int) -> np.ndarray:
     return np.mean(np.abs(normalized_ranks - 0.5), axis=1)
 
 
-def _certificate_matrix(deltas: np.ndarray, probe_grads: np.ndarray, eps: float = 1.0e-12) -> np.ndarray:
-    num_clients = deltas.shape[0]
-    if num_clients == 0 or probe_grads.size == 0:
-        return np.zeros((num_clients, 0), dtype=np.float64)
-
-    delta_norms = np.linalg.norm(deltas, axis=1)
-    grad_norms = np.linalg.norm(probe_grads, axis=1)
-    dot = deltas @ probe_grads.T
-    denom = delta_norms[:, None] * grad_norms[None, :] + eps
-    return -dot / denom
+def _ensemble_rank_penalties(deltas: np.ndarray, num_coords: int, num_subsamples: int) -> np.ndarray:
+    if deltas.shape[0] == 0:
+        return np.zeros(0, dtype=np.float64)
+    penalties = [
+        _sample_rank_penalties_once(deltas, num_coords)
+        for _ in range(max(1, int(num_subsamples)))
+    ]
+    return np.median(np.stack(penalties, axis=0), axis=0)
 
 
-def _build_state_layout(model) -> List[tuple[str, str, int]]:
-    param_names = set(dict(model.named_parameters()).keys())
-    layout = []
-    for key, value in model.state_dict().items():
-        kind = "param" if key in param_names else "buffer"
-        layout.append((kind, key, int(value.numel())))
-    return layout
-
-
-def _flatten_grads_to_state_vector(model, layout: List[tuple[str, str, int]], grads_by_name: Dict[str, torch.Tensor]) -> torch.Tensor:
-    first_param = next(model.parameters(), None)
-    if first_param is None:
-        return torch.empty(0)
-    device = first_param.device
-    dtype = first_param.dtype
-
-    chunks = []
-    for kind, key, numel in layout:
-        if kind == "param":
-            grad = grads_by_name.get(key)
-            if grad is None:
-                chunks.append(torch.zeros(numel, device=device, dtype=dtype))
-            else:
-                chunks.append(grad.detach().reshape(-1).to(device=device, dtype=dtype))
-        else:
-            chunks.append(torch.zeros(numel, device=device, dtype=dtype))
-    return torch.cat(chunks, dim=0) if chunks else torch.empty(0, device=device, dtype=dtype)
+def _mean_ce_loss(model, loader, device, pin_memory: bool) -> float:
+    total_loss = 0.0
+    total_examples = 0
+    with torch.no_grad():
+        for inputs, labels in loader:
+            inputs = inputs.to(device, non_blocking=pin_memory)
+            labels = labels.to(device, non_blocking=pin_memory)
+            logits = model(inputs)
+            total_loss += float(F.cross_entropy(logits, labels, reduction="sum").item())
+            total_examples += int(labels.numel())
+    if total_examples <= 0:
+        return 0.0
+    return total_loss / total_examples
 
 
 @aggregator_registry
@@ -266,6 +279,7 @@ class CARAT(AggregatorBase):
             "num_probe_tasks": 8,
             "probe_samples_per_class": 4,
             "probe_task_batch_size": 128,
+            "probe_radius_quantile": 0.5,
             "clip_method": "mad",
             "clip_k": 2.5,
             "clip_percentile": 0.9,
@@ -274,6 +288,7 @@ class CARAT(AggregatorBase):
             "rank_weight": 0.20,
             "prior_weight": 0.05,
             "rank_num_coords": 4096,
+            "rank_num_subsamples": 5,
             "optimizer_steps": 60,
             "optimizer_lr": 0.5,
         }
@@ -293,7 +308,6 @@ class CARAT(AggregatorBase):
                 self.probe_class_indices[cls] = cls_indices
 
         self.probe_model = get_model(self.args)
-        self.state_layout = _build_state_layout(self.probe_model)
         num_clients = max(1, int(self.args.num_clients))
         self.previous_alpha = np.full(num_clients, 1.0 / num_clients, dtype=np.float64)
 
@@ -325,22 +339,13 @@ class CARAT(AggregatorBase):
         fallback = np.random.choice(self.probe_pool_indices, size=fallback_size, replace=False)
         return [np.asarray(fallback, dtype=np.int64)]
 
-    def _compute_hidden_probe_gradients(self, global_weights_vec) -> np.ndarray:
+    def _build_task_loaders(self):
         task_indices_list = self._sample_task_indices()
-        target_dim = int(global_weights_vec.numel()) if torch.is_tensor(global_weights_vec) else int(np.asarray(global_weights_vec).size)
         if not task_indices_list:
-            return np.zeros((0, target_dim), dtype=np.float64)
-
-        vec2model(global_weights_vec, self.probe_model)
-        self.probe_model.to(self.args.device)
-        self.probe_model.eval()
+            return []
 
         pin_memory = str(getattr(self.args.device, "type", self.args.device)).startswith("cuda")
-        param_items = list(self.probe_model.named_parameters())
-        param_names = [name for name, _ in param_items]
-        params = [param for _, param in param_items]
-        gradients = []
-
+        loaders = []
         for task_indices in task_indices_list:
             task_dataset = subset_by_idx(self.args, self.train_dataset, task_indices, train=False)
             batch_size = min(max(1, int(self.probe_task_batch_size)), len(task_dataset))
@@ -351,22 +356,40 @@ class CARAT(AggregatorBase):
                 num_workers=self.args.num_workers,
                 pin_memory=pin_memory,
             )
-            batch = next(iter(loader))
-            inputs, labels = batch
-            inputs = inputs.to(self.args.device, non_blocking=pin_memory)
-            labels = labels.to(self.args.device, non_blocking=pin_memory)
+            loaders.append(loader)
+        return loaders
 
-            self.probe_model.zero_grad(set_to_none=True)
-            with torch.enable_grad():
-                logits = self.probe_model(inputs)
-                loss = F.cross_entropy(logits, labels)
-                grads = torch.autograd.grad(loss, params, allow_unused=True)
+    def _compute_hidden_loss_certificates(self, global_weights_vec, eval_deltas) -> tuple[np.ndarray, np.ndarray]:
+        task_loaders = self._build_task_loaders()
+        num_clients = len(eval_deltas)
+        if not task_loaders:
+            return np.zeros((num_clients, 0), dtype=np.float64), np.zeros(0, dtype=np.float64)
 
-            grads_by_name = {name: grad for name, grad in zip(param_names, grads)}
-            grad_vector = _flatten_grads_to_state_vector(self.probe_model, self.state_layout, grads_by_name)
-            gradients.append(grad_vector.detach().cpu().numpy().astype(np.float64, copy=False))
+        pin_memory = str(getattr(self.args.device, "type", self.args.device)).startswith("cuda")
+        vec2model(global_weights_vec, self.probe_model)
+        self.probe_model.to(self.args.device)
+        self.probe_model.eval()
+        baseline_losses = np.array(
+            [_mean_ce_loss(self.probe_model, loader, self.args.device, pin_memory) for loader in task_loaders],
+            dtype=np.float64,
+        )
 
-        return np.stack(gradients, axis=0) if gradients else np.zeros((0, target_dim), dtype=np.float64)
+        certificates = np.zeros((num_clients, len(task_loaders)), dtype=np.float64)
+        if torch.is_tensor(global_weights_vec):
+            base_vec = global_weights_vec.detach().reshape(-1)
+        else:
+            base_vec = np.asarray(global_weights_vec).reshape(-1)
+
+        for client_idx in range(num_clients):
+            delta = eval_deltas[client_idx]
+            candidate_vec = base_vec + delta
+            vec2model(candidate_vec, self.probe_model)
+            self.probe_model.eval()
+            for task_idx, loader in enumerate(task_loaders):
+                task_loss = _mean_ce_loss(self.probe_model, loader, self.args.device, pin_memory)
+                certificates[client_idx, task_idx] = baseline_losses[task_idx] - task_loss
+
+        return certificates, baseline_losses
 
     def _optimize_weights(self, certificates: np.ndarray, rank_penalties: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         num_clients = certificates.shape[0]
@@ -427,10 +450,24 @@ class CARAT(AggregatorBase):
             deltas_clipped = _clip_vectors_by_l2_norm(deltas, clip_norm)
             deltas_clipped = _nan_to_num(deltas_clipped)
             deltas_clipped_np = _to_numpy(deltas_clipped).astype(np.float64, copy=False)
+            clipped_norms = np.linalg.norm(deltas_clipped_np, axis=1)
 
-            probe_gradients = self._compute_hidden_probe_gradients(global_weights_vec)
-            certificates = _certificate_matrix(deltas_clipped_np, probe_gradients)
-            rank_penalties = _sample_rank_penalties(deltas_clipped_np, int(self.rank_num_coords))
+            positive_norms = clipped_norms[clipped_norms > 1.0e-12]
+            if positive_norms.size:
+                radius_q = min(max(float(self.probe_radius_quantile), 0.0), 1.0)
+                eval_radius = float(np.quantile(positive_norms, radius_q))
+            else:
+                eval_radius = 0.0
+            eval_deltas = _normalize_to_radius(deltas_clipped, eval_radius)
+
+            certificates_raw, baseline_losses = self._compute_hidden_loss_certificates(global_weights_vec, eval_deltas)
+            certificates = _robust_standardize_columns(certificates_raw)
+            rank_penalties_raw = _ensemble_rank_penalties(
+                deltas_clipped_np,
+                int(self.rank_num_coords),
+                int(self.rank_num_subsamples),
+            )
+            rank_penalties = _robust_positive_penalty(rank_penalties_raw)
             alpha, task_scores = self._optimize_weights(certificates, rank_penalties)
             self.previous_alpha = alpha
 
@@ -439,18 +476,21 @@ class CARAT(AggregatorBase):
             log_file_only(
                 self.args.logger,
                 logging.INFO,
-                "CARAT alpha=%s rank_penalties=%s suspicious=%s",
+                "CARAT alpha=%s rank_penalties=%s raw_rank=%s suspicious=%s",
                 np.round(alpha, 4).tolist(),
                 np.round(rank_penalties, 4).tolist(),
+                np.round(rank_penalties_raw, 4).tolist(),
                 suspicious,
             )
             log_file_only(
                 self.args.logger,
                 logging.INFO,
-                "CARAT task_scores=%s softmin=%.6f task_focus=%s clip_norm=%.6f",
+                "CARAT task_scores=%s softmin=%.6f task_focus=%s baseline_losses=%s eval_radius=%.6f clip_norm=%.6f",
                 np.round(task_scores, 4).tolist(),
                 float(softmin_value),
                 np.round(task_focus, 4).tolist(),
+                np.round(baseline_losses, 4).tolist(),
+                float(eval_radius),
                 float(clip_norm),
             )
 

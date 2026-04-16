@@ -88,3 +88,21 @@ defenses:
   - defense: FLAME
     defense_params:
       gamma: 1.2e-5
+  - defense: CARAT
+    defense_params:
+      num_probe_pool: 512
+      num_probe_tasks: 8
+      probe_samples_per_class: 4
+      probe_task_batch_size: 128
+      probe_radius_quantile: 0.5
+      clip_method: mad
+      clip_k: 2.5
+      clip_percentile: 0.9
+      rho_hat: 0.2
+      certificate_beta: 12.0
+      rank_weight: 0.20
+      prior_weight: 0.05
+      rank_num_coords: 4096
+      rank_num_subsamples: 5
+      optimizer_steps: 60
+      optimizer_lr: 0.5
