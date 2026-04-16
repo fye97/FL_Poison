@@ -53,7 +53,8 @@ def test_task_output_dir_groups_attack_defense_and_run_metadata():
         / "NoAttack__Mean"
         / "ep300_clients50_lr0.01_adv0_seed7_exp0_cfgFedSGD_MNIST_Lenet"
     )
-    assert launch.output_filename_for_task(task) == "metrics.csv"
+    assert launch.output_filename_for_task(task) == "metrics_exp0.csv"
+    assert launch.output_filename_candidates_for_task(task) == ("metrics_exp0.csv", "metrics.csv")
 
 
 def _build_task(launch, *, epochs="3"):
@@ -88,6 +89,21 @@ def test_is_task_complete_accepts_full_metrics_without_marker(tmp_path):
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "jobmeta.txt").write_text("task_id=0\n", encoding="utf-8")
     (output_dir / "metrics.csv").write_text(
+        "epoch,train_acc,train_loss\n0,0.1,1.0\n1,0.2,0.9\n2,0.3,0.8\n",
+        encoding="utf-8",
+    )
+
+    assert launch.is_task_complete(result_root, task) is True
+
+
+def test_is_task_complete_accepts_canonical_exp_metrics_without_marker(tmp_path):
+    launch = _load_launch_module()
+    task = _build_task(launch, epochs="3")
+    result_root = tmp_path / "results"
+    output_dir = launch.task_output_dir(result_root, task)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "jobmeta.txt").write_text("task_id=0\n", encoding="utf-8")
+    (output_dir / "metrics_exp0.csv").write_text(
         "epoch,train_acc,train_loss\n0,0.1,1.0\n1,0.2,0.9\n2,0.3,0.8\n",
         encoding="utf-8",
     )

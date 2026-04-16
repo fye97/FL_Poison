@@ -661,8 +661,26 @@ def task_output_dir(result_root: Path, task: ExperimentTask) -> Path:
     return output_group_for_task(result_root, task) / output_dirname_for_task(task)
 
 
-def output_filename_for_task(_: ExperimentTask) -> str:
-    return METRICS_FILENAME
+def output_filename_for_task(task: ExperimentTask) -> str:
+    metrics_path = Path(METRICS_FILENAME)
+    stem = metrics_path.stem or "metrics"
+    suffix = metrics_path.suffix or ".csv"
+    return f"{stem}_exp{task.experiment_id}{suffix}"
+
+
+def output_filename_candidates_for_task(task: ExperimentTask) -> Tuple[str, ...]:
+    primary = output_filename_for_task(task)
+    if primary == METRICS_FILENAME:
+        return (primary,)
+    return (primary, METRICS_FILENAME)
+
+
+def resolve_existing_metrics_file(output_dir: Path, task: ExperimentTask) -> Path:
+    for filename in output_filename_candidates_for_task(task):
+        candidate = output_dir / filename
+        if candidate.exists():
+            return candidate
+    return output_dir / output_filename_for_task(task)
 
 
 def completion_marker_for_task(output_dir: Path) -> Path:
@@ -682,7 +700,7 @@ def task_completion_artifacts(result_root: Path, task: ExperimentTask) -> Tuple[
     output_dir = task_output_dir(result_root, task)
     return (
         output_dir,
-        output_dir / output_filename_for_task(task),
+        resolve_existing_metrics_file(output_dir, task),
         output_dir / "jobmeta.txt",
     )
 

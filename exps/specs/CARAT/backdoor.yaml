@@ -1,0 +1,56 @@
+name: backdoor
+description: Backdoor benchmark for the CARAT paper on CIFAR100 with clean accuracy and ASR evaluation.
+
+evaluate: true
+
+scenarios:
+  - algorithm: FedAvg
+    dataset: CIFAR100
+
+matrix:
+  distributions:
+    - type: iid
+    - type: non-iid
+      dirichlet_alpha: 0.5
+  num_advs:
+    - 0.2
+  models:
+    - resnet18
+  epochs:
+    - 300
+  num_clients:
+    - 20
+  learning_rates:
+    - 0.05
+  seeds:
+    - 42
+  attacks:
+    - BadNets
+    - Neurotoxin
+  defenses:
+    - Mean
+    - FLTrust
+    - FLAME
+    - DeepSight
+    - CARAT
+
+repeats:
+  count: 3
+  start: 0
+
+runtime:
+  gpu_idx: 0
+  require_cuda: true
+
+slurm:
+  account: def-lincai
+  time: 1-00:00:00
+  gpus: nvidia_h100_80gb_hbm3_2g.20gb:1
+  cpus_per_task: 8
+  mem: 64G
+  requeue: true
+  output: logs/slurm/%x_%A_%a.out
+  error: logs/slurm/%x_%A_%a.err
+  mail_user: fengye@uvic.ca
+  mail_type: ALL
+  array_parallel: 2
