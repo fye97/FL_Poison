@@ -591,6 +591,18 @@ def resolve_python_bin(root: Path) -> str:
     if override:
         return override
 
+    active_venv = os.environ.get("VIRTUAL_ENV")
+    if active_venv:
+        candidate = Path(active_venv) / "bin" / "python"
+        if candidate.exists():
+            return str(candidate)
+
+    uv_project_env = os.environ.get("UV_PROJECT_ENVIRONMENT")
+    if uv_project_env:
+        candidate = Path(uv_project_env) / "bin" / "python"
+        if candidate.exists():
+            return str(candidate)
+
     venv_override = os.environ.get("VENV_PATH")
     if venv_override:
         candidate = Path(venv_override) / "bin" / "python"
@@ -1291,6 +1303,9 @@ def worker_main(args: argparse.Namespace) -> int:
             ("effective_seed", str(task.effective_seed)),
             ("python_bin", python_bin),
             ("python_version", run_cmd_capture([python_bin, "--version"])),
+            ("virtual_env", os.environ.get("VIRTUAL_ENV", "")),
+            ("uv_project_environment", os.environ.get("UV_PROJECT_ENVIRONMENT", "")),
+            ("cc_env_script", os.environ.get("CC_ENV_SCRIPT", "")),
             ("cuda_visible_devices", os.environ.get("CUDA_VISIBLE_DEVICES", "")),
             ("git_commit", git_value(root, "rev-parse", "HEAD") or "unknown"),
             ("git_branch", git_value(root, "rev-parse", "--abbrev-ref", "HEAD") or "unknown"),

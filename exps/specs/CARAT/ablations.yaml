@@ -1,5 +1,5 @@
 name: ablations
-description: One-factor-at-a-time CARAT ablations on the hardest untargeted CIFAR100 setting.
+description: CARAT mechanism ablations on the hardest primary CIFAR100 untargeted setting.
 
 evaluate: true
 
@@ -9,22 +9,16 @@ scenarios:
     config: configs/CARAT/FedAvg_CIFAR100_Resnet18_carat_default.yaml
   - algorithm: FedAvg
     dataset: CIFAR100
-    config: configs/CARAT/FedAvg_CIFAR100_Resnet18_carat_tasks1.yaml
-  - algorithm: FedAvg
-    dataset: CIFAR100
     config: configs/CARAT/FedAvg_CIFAR100_Resnet18_carat_tasks4.yaml
   - algorithm: FedAvg
     dataset: CIFAR100
     config: configs/CARAT/FedAvg_CIFAR100_Resnet18_carat_tasks16.yaml
   - algorithm: FedAvg
     dataset: CIFAR100
-    config: configs/CARAT/FedAvg_CIFAR100_Resnet18_carat_beta1.yaml
+    config: configs/CARAT/FedAvg_CIFAR100_Resnet18_carat_pool400.yaml
   - algorithm: FedAvg
     dataset: CIFAR100
-    config: configs/CARAT/FedAvg_CIFAR100_Resnet18_carat_beta4.yaml
-  - algorithm: FedAvg
-    dataset: CIFAR100
-    config: configs/CARAT/FedAvg_CIFAR100_Resnet18_carat_beta24.yaml
+    config: configs/CARAT/FedAvg_CIFAR100_Resnet18_carat_pool1200.yaml
   - algorithm: FedAvg
     dataset: CIFAR100
     config: configs/CARAT/FedAvg_CIFAR100_Resnet18_carat_rank0.yaml
@@ -37,6 +31,12 @@ scenarios:
   - algorithm: FedAvg
     dataset: CIFAR100
     config: configs/CARAT/FedAvg_CIFAR100_Resnet18_carat_prior0p1.yaml
+  - algorithm: FedAvg
+    dataset: CIFAR100
+    config: configs/CARAT/FedAvg_CIFAR100_Resnet18_carat_clipk1p5.yaml
+  - algorithm: FedAvg
+    dataset: CIFAR100
+    config: configs/CARAT/FedAvg_CIFAR100_Resnet18_carat_clipk3p5.yaml
 
 matrix:
   distributions:
@@ -55,7 +55,7 @@ matrix:
   seeds:
     - 42
   attacks:
-    - FangAttack
+    - MinSum
   defenses:
     - CARAT
 
@@ -65,11 +65,12 @@ repeats:
 
 runtime:
   gpu_idx: 0
+  num_workers: 4
   require_cuda: true
 
 slurm:
   account: def-lincai
-  time: 0-03:00:00
+  time: 0-12:00:00
   gpus: nvidia_h100_80gb_hbm3_2g.20gb:1
   cpus_per_task: 8
   mem: 64G
@@ -77,6 +78,6 @@ slurm:
   output: logs/slurm/%x_%A_%a.out
   error: logs/slurm/%x_%A_%a.err
   mail_user: fengye@uvic.ca
-  mail_type: ALL
-  chunk_size: 16
-  array_parallel: 2
+  mail_type: FAIL
+  chunk_size: 33
+  array_parallel: 3

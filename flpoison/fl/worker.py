@@ -95,11 +95,17 @@ class Worker:
             return
         optimizer.step()
 
-    def test(self, model, test_loader, imbalanced=False):
+    def test(self, model, test_loader, imbalanced=False, return_details=False):
         model.eval()
         tail_cls_from = self.args.tail_cls_from if imbalanced else 0
         overall_correct, test_loss, num_samples = 0, 0, 0
         rest_correct, rest_samples = 0, 0
+        num_classes = int(getattr(self.args, "num_classes", 0) or 0)
+        class_correct = None
+        class_total = None
+        if return_details and num_classes > 0:
+            class_correct = torch.zeros(num_classes, dtype=torch.long)
+            class_total = torch.zeros(num_classes, dtype=torch.long)
 
         with torch.inference_mode():
             for images, targets in test_loader:
@@ -118,9 +124,35 @@ class Worker:
                     rest_correct += (predicted[rest_mask]
                                      == targets[rest_mask]).sum().item()
                     rest_samples += rest_mask.sum().item()
+                if return_details and class_correct is not None and class_total is not None:
+                    target_cpu = targets.detach().cpu()
+                    pred_cpu = predicted.detach().cpu()
+                    class_total += torch.bincount(target_cpu, minlength=num_classes)
+                    correct_mask = pred_cpu == target_cpu
+                    if correct_mask.any():
+                        class_correct += torch.bincount(
+                            target_cpu[correct_mask], minlength=num_classes)
 
         overall_accuracy = overall_correct / num_samples
         test_loss /= num_samples
+
+        if return_details:
+            metrics = {
+                "Test Acc": overall_accuracy,
+                "Test loss": test_loss,
+            }
+            if imbalanced:
+                metrics["Tail Acc"] = rest_correct / rest_samples if rest_samples > 0 else 0
+            if class_correct is not None and class_total is not None:
+                per_class_acc = [
+                    class_correct[idx].item() / class_total[idx].item()
+                    for idx in range(num_classes)
+                    if class_total[idx].item() > 0
+                ]
+                if per_class_acc:
+                    metrics["Macro Acc"] = sum(per_class_acc) / len(per_class_acc)
+                    metrics["Worst-Class Acc"] = min(per_class_acc)
+            return metrics
 
         if imbalanced:
             rest_accuracy = rest_correct / rest_samples if rest_samples > 0 else 0

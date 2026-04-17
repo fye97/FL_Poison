@@ -27,13 +27,13 @@ record_time: false
 log_stream: true
 
 num_adv: 0.2
-attack: FangAttack
+attack: MinSum
 defense: CARAT
 
 defenses:
   - defense: CARAT
     defense_params:
-      num_probe_pool: 512
+      num_probe_pool: 800
       num_probe_tasks: 1
       probe_samples_per_class: 4
       probe_task_batch_size: 128

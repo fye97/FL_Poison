@@ -1,22 +1,24 @@
-name: smoke_cifar100
-description: Quick CARAT smoke test on the primary CIFAR100 protocol config.
+name: appendix_tinyimagenet
+description: Supplementary TinyImageNet untargeted benchmark for the CARAT appendix.
 
 evaluate: true
 
 scenarios:
   - algorithm: FedAvg
-    dataset: CIFAR100
-    config: configs/CARAT/FedAvg_CIFAR100_Resnet18_protocol.yaml
+    dataset: TinyImageNet
+    config: configs/CARAT/FedAvg_TinyImageNet_Resnet18_protocol.yaml
 
 matrix:
   distributions:
     - type: iid
+    - type: non-iid
+      dirichlet_alpha: 0.5
   num_advs:
     - 0.2
   models:
     - resnet18
   epochs:
-    - 5
+    - 300
   num_clients:
     - 20
   learning_rates:
@@ -25,12 +27,14 @@ matrix:
     - 42
   attacks:
     - ALIE
+    - MinSum
   defenses:
     - Mean
+    - FLTrust
     - CARAT
 
 repeats:
-  count: 1
+  count: 3
   start: 0
 
 runtime:
@@ -40,7 +44,7 @@ runtime:
 
 slurm:
   account: def-lincai
-  time: 0-04:00:00
+  time: 1-12:00:00
   gpus: nvidia_h100_80gb_hbm3_2g.20gb:1
   cpus_per_task: 8
   mem: 64G
@@ -49,5 +53,5 @@ slurm:
   error: logs/slurm/%x_%A_%a.err
   mail_user: fengye@uvic.ca
   mail_type: FAIL
-  chunk_size: 2
-  array_parallel: 1
+  chunk_size: 36
+  array_parallel: 2

@@ -1,11 +1,12 @@
 name: main_untargeted
-description: Main untargeted poisoning benchmark for the CARAT paper on CIFAR100.
+description: Main untargeted poisoning benchmark for the CARAT paper on the primary CIFAR100 protocol.
 
 evaluate: true
 
 scenarios:
   - algorithm: FedAvg
     dataset: CIFAR100
+    config: configs/CARAT/FedAvg_CIFAR100_Resnet18_protocol.yaml
 
 matrix:
   distributions:
@@ -30,9 +31,10 @@ matrix:
   attacks:
     - ALIE
     - MinMax
-    - FangAttack
+    - MinSum
   defenses:
     - Mean
+    - TrimmedMean
     - FLTrust
     - MultiKrum
     - CARAT
@@ -43,6 +45,7 @@ repeats:
 
 runtime:
   gpu_idx: 0
+  num_workers: 4
   require_cuda: true
 
 slurm:
@@ -55,6 +58,6 @@ slurm:
   output: logs/slurm/%x_%A_%a.out
   error: logs/slurm/%x_%A_%a.err
   mail_user: fengye@uvic.ca
-  mail_type: ALL
-  chunk_size: 24
-  array_parallel: 2
+  mail_type: FAIL
+  chunk_size: 270
+  array_parallel: 4

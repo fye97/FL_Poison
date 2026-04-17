@@ -39,12 +39,12 @@ defenses:
       probe_task_batch_size: 128
       probe_radius_quantile: 0.5
       clip_method: mad
-      clip_k: 2.5
+      clip_k: 3.5
       clip_percentile: 0.9
       rho_hat: 0.2
       certificate_beta: 12.0
       rank_weight: 0.20
-      prior_weight: 0.0
+      prior_weight: 0.05
       rank_num_coords: 4096
       rank_num_subsamples: 5
       optimizer_steps: 60

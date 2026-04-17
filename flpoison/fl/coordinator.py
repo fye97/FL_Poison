@@ -58,20 +58,19 @@ def evaluate(the_server, test_dataset, args, global_epoch):
     """
     Backdoor attacks evaluation requires inference-time attacks. However, since the server is unaware of the backdoor attacks, the client's `client_test` is used in the coordinator for ASR evaluation.
     """
-    test_keys = ["Test Acc", "Test loss", "ASR", "ASR loss"]
     results = OrderedDict()
 
     # normal evaluation
     imbalanced_flag = True if 'imbalanced' in args.distribution else False
-    if imbalanced_flag:
-        test_keys.insert(1, 'Tail Acc')
-
     test_loader = the_server.get_dataloader(test_dataset, train_flag=False)
     clean_test = the_server.test(
-        the_server.global_model, test_loader, imbalanced=imbalanced_flag)
-
-    for idx in range(len(clean_test)):
-        results[test_keys[idx]] = clean_test[idx]
+        the_server.global_model,
+        test_loader,
+        imbalanced=imbalanced_flag,
+        return_details=True,
+    )
+    for key, value in clean_test.items():
+        results[key] = value
 
     if args.attack in data_poisoning_attacks + hybrid_attacks:
         # index [0, f] is poisoning attacker

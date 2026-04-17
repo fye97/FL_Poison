@@ -1,11 +1,12 @@
 name: pilot_untargeted
-description: One-seed pilot sweep for CARAT untargeted poisoning runs on CIFAR100.
+description: One-seed preflight sweep for the main CARAT untargeted benchmark on CIFAR100.
 
 evaluate: true
 
 scenarios:
   - algorithm: FedAvg
     dataset: CIFAR100
+    config: configs/CARAT/FedAvg_CIFAR100_Resnet18_protocol.yaml
 
 matrix:
   distributions:
@@ -26,9 +27,11 @@ matrix:
     - 42
   attacks:
     - ALIE
-    - FangAttack
+    - MinSum
   defenses:
     - Mean
+    - TrimmedMean
+    - MultiKrum
     - FLTrust
     - CARAT
 
@@ -38,6 +41,7 @@ repeats:
 
 runtime:
   gpu_idx: 0
+  num_workers: 4
   require_cuda: true
 
 slurm:
@@ -50,6 +54,6 @@ slurm:
   output: logs/slurm/%x_%A_%a.out
   error: logs/slurm/%x_%A_%a.err
   mail_user: fengye@uvic.ca
-  mail_type: ALL
-  chunk_size: 12
+  mail_type: FAIL
+  chunk_size: 20
   array_parallel: 2

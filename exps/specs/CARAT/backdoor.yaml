@@ -1,17 +1,20 @@
 name: backdoor
-description: Backdoor benchmark for the CARAT paper on CIFAR100 with clean accuracy and ASR evaluation.
+description: Main backdoor benchmark for the CARAT paper on the primary CIFAR100 protocol.
 
 evaluate: true
 
 scenarios:
   - algorithm: FedAvg
     dataset: CIFAR100
+    config: configs/CARAT/FedAvg_CIFAR100_Resnet18_protocol.yaml
 
 matrix:
   distributions:
     - type: iid
     - type: non-iid
       dirichlet_alpha: 0.5
+    - type: non-iid
+      dirichlet_alpha: 0.1
   num_advs:
     - 0.2
   models:
@@ -25,7 +28,8 @@ matrix:
   seeds:
     - 42
   attacks:
-    - BadNets
+    - ModelReplacement
+    - DBA
     - Neurotoxin
   defenses:
     - Mean
@@ -40,6 +44,7 @@ repeats:
 
 runtime:
   gpu_idx: 0
+  num_workers: 4
   require_cuda: true
 
 slurm:
@@ -52,6 +57,6 @@ slurm:
   output: logs/slurm/%x_%A_%a.out
   error: logs/slurm/%x_%A_%a.err
   mail_user: fengye@uvic.ca
-  mail_type: ALL
-  chunk_size: 16
-  array_parallel: 2
+  mail_type: FAIL
+  chunk_size: 135
+  array_parallel: 4

@@ -15,11 +15,12 @@ learning_rate: 0.05
 local_epochs: 4
 
 model: resnet18
-dataset: CIFAR100
+dataset: CHMNIST
 distribution: iid
 im_iid_gamma: 0.01
 tail_cls_from: 4
 dirichlet_alpha: 0.5
+root: data
 cache_partition: false
 gpu_idx: [0]
 num_workers: 0
@@ -27,15 +28,26 @@ record_time: false
 log_stream: true
 
 num_adv: 0.2
-attack: MinSum
-defense: CARAT
+attack: NoAttack
+defense: Mean
 
 defenses:
+  - defense: Mean
+  - defense: TrimmedMean
+    defense_params:
+      beta: 0.1
+  - defense: MultiKrum
+    defense_params:
+      avg_percentage: 0.2
+      enable_check: false
+  - defense: FLTrust
+    defense_params:
+      num_sample: 256
   - defense: CARAT
     defense_params:
-      num_probe_pool: 800
+      num_probe_pool: 256
       num_probe_tasks: 8
-      probe_samples_per_class: 4
+      probe_samples_per_class: 8
       probe_task_batch_size: 128
       probe_radius_quantile: 0.5
       clip_method: mad
@@ -44,7 +56,7 @@ defenses:
       rho_hat: 0.2
       certificate_beta: 12.0
       rank_weight: 0.20
-      prior_weight: 0.0
+      prior_weight: 0.05
       rank_num_coords: 4096
       rank_num_subsamples: 5
       optimizer_steps: 60

@@ -5,6 +5,9 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/.." && pwd)"
 
+# shellcheck source=/dev/null
+source "${script_dir}/_bootstrap_env.sh"
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -22,26 +25,25 @@ if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
   exit 0
 fi
 
-if [ -n "${PYTHON_BIN:-}" ]; then
-  py_bin="${PYTHON_BIN}"
-elif [ -x "${repo_root}/.venv/bin/python" ]; then
-  py_bin="${repo_root}/.venv/bin/python"
-elif command -v python >/dev/null 2>&1; then
-  py_bin="python"
-else
-  py_bin="python3"
-fi
+for arg in "$@"; do
+  if [ "${arg}" = "--chain-specs" ]; then
+    echo "error: exps/run_cc_carat.sh only supports parallel submission; use exps/run_cc.sh for custom chaining." >&2
+    exit 2
+  fi
+done
 
-export CODE_SRC_ROOT="${CODE_SRC_ROOT:-${repo_root}}"
-export PYTHON_BIN="${py_bin}"
+flpoison_bootstrap_python "${repo_root}"
+py_bin="${PYTHON_BIN}"
 
 mkdir -p "${repo_root}/logs/slurm"
 
 exec "${py_bin}" "${script_dir}/launch.py" cc \
-  --chain-specs \
-  CARAT/clean_reference \
+  CARAT/smoke_cifar100 \
   CARAT/pilot_untargeted \
+  CARAT/clean_reference \
   CARAT/main_untargeted \
   CARAT/backdoor \
+  CARAT/appendix_tinyimagenet \
+  CARAT/appendix_chmnist \
   CARAT/ablations \
   "$@"

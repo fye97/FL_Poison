@@ -1,11 +1,12 @@
 name: clean_reference
-description: Clean-reference CIFAR100 benchmark for the CARAT paper.
+description: Clean-utility benchmark for the CARAT paper on the primary CIFAR100 protocol.
 
 evaluate: true
 
 scenarios:
   - algorithm: FedAvg
     dataset: CIFAR100
+    config: configs/CARAT/FedAvg_CIFAR100_Resnet18_protocol.yaml
 
 matrix:
   distributions:
@@ -30,6 +31,7 @@ matrix:
     - NoAttack
   defenses:
     - Mean
+    - TrimmedMean
     - FLTrust
     - MultiKrum
     - CARAT
@@ -40,11 +42,12 @@ repeats:
 
 runtime:
   gpu_idx: 0
+  num_workers: 4
   require_cuda: true
 
 slurm:
   account: def-lincai
-  time: 0-03:00:00
+  time: 0-08:00:00
   gpus: nvidia_h100_80gb_hbm3_2g.20gb:1
   cpus_per_task: 8
   mem: 64G
@@ -52,6 +55,6 @@ slurm:
   output: logs/slurm/%x_%A_%a.out
   error: logs/slurm/%x_%A_%a.err
   mail_user: fengye@uvic.ca
-  mail_type: ALL
-  chunk_size: 12
-  array_parallel: 2
+  mail_type: FAIL
+  chunk_size: 45
+  array_parallel: 4

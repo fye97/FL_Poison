@@ -174,17 +174,24 @@ def fl_run(args):
                 runtime_profiler.add_server_stage(
                     "evaluation", time.perf_counter() - eval_start)
 
+            round_time_sec = time.perf_counter() - round_start
+
             metrics_writer.write_row(
                 epoch=global_epoch,
                 train_acc=avg_train_acc,
                 train_loss=avg_train_loss,
+                round_time_sec=round_time_sec,
                 eval_acc=test_stats.get("Test Acc"),
                 eval_loss=test_stats.get("Test loss"),
+                tail_acc=test_stats.get("Tail Acc"),
+                macro_acc=test_stats.get("Macro Acc"),
+                worst_class_acc=test_stats.get("Worst-Class Acc"),
+                asr=test_stats.get("ASR"),
+                asr_loss=test_stats.get("ASR loss"),
             )
 
             # print the training and testing results of the current global_epoch
             log_start = time.perf_counter()
-            round_time_sec = time.perf_counter() - round_start
             epoch_msg += f"Round time: {round_time_sec:.2f}s\t"
             if test_stats:
                 epoch_msg += "\t".join(

@@ -5,18 +5,11 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/.." && pwd)"
 
-if [ -n "${PYTHON_BIN:-}" ]; then
-  py_bin="${PYTHON_BIN}"
-elif [ -x "${repo_root}/.venv/bin/python" ]; then
-  py_bin="${repo_root}/.venv/bin/python"
-elif command -v python >/dev/null 2>&1; then
-  py_bin="python"
-else
-  py_bin="python3"
-fi
+# shellcheck source=/dev/null
+source "${script_dir}/_bootstrap_env.sh"
 
-export CODE_SRC_ROOT="${CODE_SRC_ROOT:-${repo_root}}"
-export PYTHON_BIN="${py_bin}"
+flpoison_bootstrap_python "${repo_root}"
+py_bin="${PYTHON_BIN}"
 
 mkdir -p "${repo_root}/logs/slurm"
 

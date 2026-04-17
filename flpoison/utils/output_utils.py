@@ -70,8 +70,10 @@ def _parse_metrics_csv(filename: str | Path):
         epochs.append(int(epoch_text))
         accs.append(float(acc_text))
         losses.append(float(loss_text))
-        asrs.append(None)
-        asr_losses.append(None)
+        asr_text = (row.get("asr") or "").strip()
+        asr_loss_text = (row.get("asr_loss") or "").strip()
+        asrs.append(float(asr_text) if asr_text else None)
+        asr_losses.append(float(asr_loss_text) if asr_loss_text else None)
 
     return epochs, accs, losses, asrs, asr_losses
 
@@ -105,9 +107,19 @@ class EpochMetricsWriter:
     def __init__(self, output_file: str | Path, *, include_eval: bool):
         self.path = Path(output_file)
         self.include_eval = bool(include_eval)
-        self.fieldnames = ["epoch", "train_acc", "train_loss"]
+        self.fieldnames = ["epoch", "train_acc", "train_loss", "round_time_sec"]
         if self.include_eval:
-            self.fieldnames.extend(["eval_acc", "eval_loss"])
+            self.fieldnames.extend(
+                [
+                    "eval_acc",
+                    "eval_loss",
+                    "tail_acc",
+                    "macro_acc",
+                    "worst_class_acc",
+                    "asr",
+                    "asr_loss",
+                ]
+            )
         self._handle = None
         self._writer = None
 
@@ -132,8 +144,14 @@ class EpochMetricsWriter:
         epoch: int,
         train_acc: float,
         train_loss: float,
+        round_time_sec: float | None = None,
         eval_acc: float | None = None,
         eval_loss: float | None = None,
+        tail_acc: float | None = None,
+        macro_acc: float | None = None,
+        worst_class_acc: float | None = None,
+        asr: float | None = None,
+        asr_loss: float | None = None,
     ) -> None:
         if self._writer is None or self._handle is None:
             raise RuntimeError("EpochMetricsWriter must be used as a context manager")
@@ -142,10 +160,16 @@ class EpochMetricsWriter:
             "epoch": int(epoch),
             "train_acc": _serialize_metric(train_acc),
             "train_loss": _serialize_metric(train_loss),
+            "round_time_sec": _serialize_metric(round_time_sec),
         }
         if self.include_eval:
             row["eval_acc"] = _serialize_metric(eval_acc)
             row["eval_loss"] = _serialize_metric(eval_loss)
+            row["tail_acc"] = _serialize_metric(tail_acc)
+            row["macro_acc"] = _serialize_metric(macro_acc)
+            row["worst_class_acc"] = _serialize_metric(worst_class_acc)
+            row["asr"] = _serialize_metric(asr)
+            row["asr_loss"] = _serialize_metric(asr_loss)
 
         self._writer.writerow(row)
         self._handle.flush()
