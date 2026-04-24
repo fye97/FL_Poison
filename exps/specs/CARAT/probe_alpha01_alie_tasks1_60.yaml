@@ -1,0 +1,53 @@
+name: probe_alpha01_alie_tasks1_60
+description: Short-horizon CARAT tasks1 probe on CIFAR100 under non-iid alpha=0.1 ALIE.
+
+evaluate: true
+
+scenarios:
+  - algorithm: FedAvg
+    dataset: CIFAR100
+    config: configs/CARAT/FedAvg_CIFAR100_Resnet18_carat_tasks1.yaml
+
+matrix:
+  distributions:
+    - type: non-iid
+      dirichlet_alpha: 0.1
+  num_advs:
+    - 0.2
+  models:
+    - resnet18
+  epochs:
+    - 60
+  num_clients:
+    - 20
+  learning_rates:
+    - 0.05
+  seeds:
+    - 42
+  attacks:
+    - ALIE
+  defenses:
+    - CARAT
+
+repeats:
+  count: 1
+  start: 0
+
+runtime:
+  gpu_idx: 0
+  num_workers: 4
+  require_cuda: true
+
+slurm:
+  account: def-lincai
+  time: 0-08:00:00
+  gpus: nvidia_h100_80gb_hbm3_2g.20gb:1
+  cpus_per_task: 8
+  mem: 64G
+  requeue: true
+  output: logs/slurm/%x_%A_%a.out
+  error: logs/slurm/%x_%A_%a.err
+  mail_user: fengye@uvic.ca
+  mail_type: FAIL
+  chunk_size: 1
+  array_parallel: 1

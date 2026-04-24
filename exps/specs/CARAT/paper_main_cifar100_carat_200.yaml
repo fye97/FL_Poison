@@ -1,0 +1,60 @@
+name: paper_main_cifar100_carat_200
+description: Incremental CARAT-only main benchmark; reuse existing playground baselines and add missing CARAT runs.
+
+evaluate: true
+
+scenarios:
+  - algorithm: FedAvg
+    dataset: CIFAR100
+    config: configs/CARAT/FedAvg_CIFAR100_config.yaml
+
+matrix:
+  distributions:
+    - type: non-iid
+      dirichlet_alpha: 1
+    - type: non-iid
+      dirichlet_alpha: 0.5
+    - type: non-iid
+      dirichlet_alpha: 0.1
+  num_advs:
+    - 0.2
+  models:
+    - resnet18
+  epochs:
+    - 200
+  num_clients:
+    - 20
+  learning_rates:
+    - 0.05
+  seeds:
+    - 42
+  attacks:
+    - ALIE
+    - FangAttack
+    - MinMax
+    - MinSum
+  defenses:
+    - CARAT
+
+repeats:
+  count: 3
+  start: 0
+
+runtime:
+  gpu_idx: 0
+  num_workers: 4
+  require_cuda: true
+
+slurm:
+  account: def-lincai
+  time: 1-00:00:00
+  gpus: nvidia_h100_80gb_hbm3_2g.20gb:1
+  cpus_per_task: 8
+  mem: 64G
+  requeue: true
+  output: logs/slurm/%x_%A_%a.out
+  error: logs/slurm/%x_%A_%a.err
+  mail_user: fengye@uvic.ca
+  mail_type: FAIL
+  chunk_size: 36
+  array_parallel: 3

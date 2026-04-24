@@ -372,18 +372,22 @@ def main() -> int:
     ]
     write_csv(output_root / "all_runs.csv", records, all_fields)
 
-    clean_records = [record for record in records if record["category"] == "clean"]
-    untargeted_records = [record for record in records if record["category"] == "untargeted"]
-    backdoor_records = [record for record in records if record["category"] == "backdoor"]
+    completed_records = [record for record in records if record["complete"]]
+    clean_records = [record for record in completed_records if record["category"] == "clean"]
+    untargeted_records = [record for record in completed_records if record["category"] == "untargeted"]
+    backdoor_records = [record for record in completed_records if record["category"] == "backdoor"]
 
     grouped_fieldnames = [
         "spec_name",
         "dataset",
+        "model",
         "distribution",
         "dirichlet_alpha",
         "attack",
         "defense",
+        "epochs",
         "num_adv",
+        "config_stem",
         "num_runs",
     ]
     metric_suffixes = [
@@ -407,19 +411,19 @@ def main() -> int:
 
     clean_summary = build_grouped_summary(
         clean_records,
-        ["spec_name", "dataset", "distribution", "dirichlet_alpha", "attack", "defense", "num_adv"],
+        ["spec_name", "dataset", "model", "distribution", "dirichlet_alpha", "attack", "defense", "epochs", "num_adv", "config_stem"],
     )
     untargeted_summary = build_grouped_summary(
         untargeted_records,
-        ["spec_name", "dataset", "distribution", "dirichlet_alpha", "attack", "defense", "num_adv"],
+        ["spec_name", "dataset", "model", "distribution", "dirichlet_alpha", "attack", "defense", "epochs", "num_adv", "config_stem"],
     )
     backdoor_summary = build_grouped_summary(
         backdoor_records,
-        ["spec_name", "dataset", "distribution", "dirichlet_alpha", "attack", "defense", "num_adv"],
+        ["spec_name", "dataset", "model", "distribution", "dirichlet_alpha", "attack", "defense", "epochs", "num_adv", "config_stem"],
     )
     runtime_summary = build_grouped_summary(
-        records,
-        ["spec_name", "dataset", "distribution", "dirichlet_alpha", "attack", "defense", "num_adv"],
+        completed_records,
+        ["spec_name", "dataset", "model", "distribution", "dirichlet_alpha", "attack", "defense", "epochs", "num_adv", "config_stem"],
     )
 
     write_csv(output_root / "clean_summary.csv", clean_summary, summary_fields)
@@ -428,6 +432,7 @@ def main() -> int:
     write_csv(output_root / "runtime_summary.csv", runtime_summary, summary_fields)
 
     print(f"Wrote {len(records)} run records to {output_root / 'all_runs.csv'}")
+    print(f"Summarized {len(completed_records)} completed run records")
     print(f"Wrote clean summary to {output_root / 'clean_summary.csv'}")
     print(f"Wrote untargeted summary to {output_root / 'untargeted_summary.csv'}")
     print(f"Wrote backdoor summary to {output_root / 'backdoor_summary.csv'}")
