@@ -1,0 +1,11 @@
+logs_root=/home/fengye/scratch/FL_Poison/logs_from_slurm_split_20260312
+manifest=/home/fengye/scratch/FL_Poison/logs_from_slurm_split_20260312/extraction_manifest.tsv
+out_dir=/home/fengye/FL_Poison/output/spreadsheet/short_run_diagnosis_epochs200_adv0.1-0.3
+target_epoch=199
+keep_epochs=200
+max_adv=0.3
+total_considered=6901
+short_runs=126
+detail_csv=/home/fengye/FL_Poison/output/spreadsheet/short_run_diagnosis_epochs200_adv0.1-0.3/short_runs_detail.csv
+report_xlsx=/home/fengye/FL_Poison/output/spreadsheet/short_run_diagnosis_epochs200_adv0.1-0.3/short_runs_report.xlsx
+recommendations_md=/home/fengye/FL_Poison/output/spreadsheet/short_run_diagnosis_epochs200_adv0.1-0.3/compute_canada_recommendations.md

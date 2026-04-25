@@ -1,0 +1,12 @@
+logs_root=/home/fengye/scratch/FL_Poison/logs_from_slurm_split_20260312
+out_dir=/home/fengye/FL_Poison/output/spreadsheet/adv0.2_client_loss_tables
+dataset=CIFAR100
+model=resnet18
+algorithm=FedAvg
+adv=0.2
+parsed_logs=1734
+filtered_seed=0
+filtered_epoch_cfg=0
+filtered_buggy_fltrust=0
+table_tex=/home/fengye/FL_Poison/output/spreadsheet/adv0.2_client_loss_tables/adv0.2_CIFAR100_resnet18_clients_loss_table.tex
+detail_csv=/home/fengye/FL_Poison/output/spreadsheet/adv0.2_client_loss_tables/adv0.2_CIFAR100_resnet18_clients_loss_detail.csv

@@ -850,6 +850,8 @@ def build_cc_sbatch_command(
     cmd: List[str] = ["sbatch", f"--array={slurm_array_spec(chunk_ids)}%{array_parallel}"]
     if dependency_text:
         cmd.append(f"--dependency={dependency_text}")
+    if not any(arg == "--export" or arg.startswith("--export=") for arg in sbatch_args):
+        cmd.append("--export=ALL")
 
     job_name = spec.slurm.job_name or spec_slug_from_path(spec.path)
     if job_name:

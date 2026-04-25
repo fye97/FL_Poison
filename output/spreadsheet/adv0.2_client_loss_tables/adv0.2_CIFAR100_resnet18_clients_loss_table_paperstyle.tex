@@ -1,0 +1,83 @@
+\begin{table*}[t]
+\definecolor{mygray}{gray}{.90}
+\renewcommand{\arraystretch}{1.0}
+\setlength{\tabcolsep}{4pt}
+\caption{Loss of the CIFAR-100 dataset with ResNet18 under four state-of-the-art model poisoning attacks at adversary ratio $20\%$, comparing IID and Non-IID settings across different client counts. Each cell reports mean$\pm$std over available seeds. If a run stopped early, its last recorded epoch before 200 is used.}
+\label{tablosscifar100clientsadv02}
+\centering\small
+\begin{tabular}{c c c c c c c c c}
+\toprule
+\multirow{2}{*}{\makecell[c]{IID\\Settings}} &
+\multirow{2}{*}{Clients} &
+\multirow{2}{*}{\makecell[c]{Defense\\Rules}} &
+\multicolumn{4}{c}{Attacks} &
+\multicolumn{2}{c}{Rank} \\
+\cmidrule(lr){4-7}\cmidrule(lr){8-9}
+& & & ALIE & FangAttack & MinMax & MinSum & Avg. Rank & Final Rank \\
+\midrule
+\multirow{14}{*}{\makecell[c]{IID}} & \multirow{7}{*}{40} & Mean & \textbf{0.0256$\pm$0.0003} & 0.0451$\pm$0.0009 & \textbf{0.0241$\pm$0.0003} & \textbf{0.0241$\pm$0.0002} & 1.75 & 2.0 \\
+ &  & NormClipping & 0.0450$\pm$0.0003 & 0.0540$\pm$0.0004 & 0.0454$\pm$0.0002 & 0.0454$\pm$0.0003 & 4.75 & 6.0 \\
+ &  & MultiKrum & 0.0395$\pm$0.0002 & 0.0278$\pm$0.0005 & 0.0246$\pm$0.0002 & 0.0246$\pm$0.0002 & 2.75 & 4.0 \\
+ &  & FLTrust & 0.0389$\pm$0.0003 & 0.0383$\pm$0.0001 & 0.0382$\pm$0.0002 & 0.0380$\pm$0.0002 & 3.25 & 5.0 \\
+ &  & FLDetector & 0.0282$\pm$0.0005 & 0.0648$\pm$0.0058 & \textbf{0.0241$\pm$0.0002} & \textbf{0.0241$\pm$0.0003} & 2.50 & 3.0 \\
+ &  & \cellcolor{mygray}TriGuardFL & \cellcolor{mygray}\textbf{0.0256$\pm$0.0003} & \cellcolor{mygray}\textbf{0.0242$\pm$0.0004} & \cellcolor{mygray}\textbf{0.0241$\pm$0.0001} & \cellcolor{mygray}0.0242$\pm$0.0002 & \cellcolor{mygray}1.25 & \cellcolor{mygray}1.0 \\
+ &  & NoAttack+Mean(Base) & 0.0234$\pm$0.0002 & 0.0234$\pm$0.0002 & 0.0234$\pm$0.0002 & 0.0234$\pm$0.0002 & -- & -- \\
+\midrule
+ & \multirow{7}{*}{60} & Mean & \textbf{0.0260$\pm$0.0003} & 0.0384$\pm$0.0022 & 0.0240$\pm$0.0003 & 0.0240$\pm$0.0004 & 2.00 & 2.0 \\
+ &  & NormClipping & 0.0453$\pm$0.0003 & 0.0560$\pm$0.0011 & 0.0458$\pm$0.0002 & 0.0461$\pm$0.0002 & 5.25 & 6.0 \\
+ &  & MultiKrum & 0.0435$\pm$0.0005 & 0.0290$\pm$0.0007 & 0.0251$\pm$0.0004 & 0.0252$\pm$0.0003 & 3.00 & 4.0 \\
+ &  & FLTrust & 0.0393$\pm$0.0004 & 0.0420$\pm$0.0051 & 0.0385$\pm$0.0003 & 0.0386$\pm$0.0003 & 3.75 & 5.0 \\
+ &  & FLDetector & 0.0281$\pm$0.0007 & 0.0467$\pm$0.0072 & 0.0240$\pm$0.0004 & 0.0240$\pm$0.0003 & 2.75 & 3.0 \\
+ &  & \cellcolor{mygray}TriGuardFL & \cellcolor{mygray}\textbf{0.0260$\pm$0.0004} & \cellcolor{mygray}\textbf{0.0242$\pm$0.0001} & \cellcolor{mygray}\textbf{0.0239$\pm$0.0004} & \cellcolor{mygray}\textbf{0.0238$\pm$0.0002} & \cellcolor{mygray}1.00 & \cellcolor{mygray}1.0 \\
+ &  & NoAttack+Mean(Base) & 0.0242$\pm$0.0003 & 0.0242$\pm$0.0003 & 0.0242$\pm$0.0003 & 0.0242$\pm$0.0003 & -- & -- \\
+\midrule
+\multirow{14}{*}{\makecell[c]{Non-IID\\($\alpha=1$)}} & \multirow{7}{*}{40} & Mean & 0.0277$\pm$0.0007 & 0.0443$\pm$0.0018 & 0.0259$\pm$0.0007 & 0.0261$\pm$0.0007 & 2.75 & 2.0 \\
+ &  & NormClipping & 0.0472$\pm$0.0003 & 0.0586$\pm$0.0067 & 0.0479$\pm$0.0002 & 0.0484$\pm$0.0003 & 5.50 & 6.0 \\
+ &  & MultiKrum & 0.0427$\pm$0.0012 & 0.0309$\pm$0.0006 & 0.0268$\pm$0.0007 & 0.0284$\pm$0.0013 & 3.50 & 4.0 \\
+ &  & FLTrust & 0.0412$\pm$0.0002 & 0.0405$\pm$0.0001 & 0.0403$\pm$0.0001 & 0.0405$\pm$0.0003 & 4.00 & 5.0 \\
+ &  & FLDetector & 0.0299$\pm$0.0007 & 0.0601$\pm$0.0024 & 0.0259$\pm$0.0005 & 0.0260$\pm$0.0006 & 3.25 & 3.0 \\
+ &  & \cellcolor{mygray}TriGuardFL & \cellcolor{mygray}\textbf{0.0276$\pm$0.0006} & \cellcolor{mygray}\textbf{0.0258$\pm$0.0006} & \cellcolor{mygray}\textbf{0.0257$\pm$0.0007} & \cellcolor{mygray}\textbf{0.0257$\pm$0.0005} & \cellcolor{mygray}1.00 & \cellcolor{mygray}1.0 \\
+ &  & NoAttack+Mean(Base) & 0.0251$\pm$0.0006 & 0.0251$\pm$0.0006 & 0.0251$\pm$0.0006 & 0.0251$\pm$0.0006 & -- & -- \\
+\midrule
+ & \multirow{7}{*}{60} & Mean & \textbf{0.0271$\pm$0.0004} & 0.0387$\pm$0.0024 & 0.0250$\pm$0.0003 & 0.0249$\pm$0.0003 & 2.00 & 2.0 \\
+ &  & NormClipping & 0.0470$\pm$0.0003 & 0.0593$\pm$0.0037 & 0.0484$\pm$0.0012 & 0.0486$\pm$0.0003 & 5.25 & 6.0 \\
+ &  & MultiKrum & 0.0452$\pm$0.0003 & 0.0303$\pm$0.0011 & 0.0258$\pm$0.0005 & 0.0275$\pm$0.0009 & 3.00 & 4.0 \\
+ &  & FLTrust & 0.0410$\pm$0.0003 & 0.0427$\pm$0.0027 & 0.0401$\pm$0.0003 & 0.0405$\pm$0.0005 & 3.75 & 5.0 \\
+ &  & FLDetector & 0.0290$\pm$0.0003 & 0.0484$\pm$0.0007 & \textbf{0.0247$\pm$0.0003} & 0.0249$\pm$0.0004 & 2.50 & 3.0 \\
+ &  & \cellcolor{mygray}TriGuardFL & \cellcolor{mygray}\textbf{0.0271$\pm$0.0003} & \cellcolor{mygray}\textbf{0.0260$\pm$0.0011} & \cellcolor{mygray}\textbf{0.0247$\pm$0.0003} & \cellcolor{mygray}\textbf{0.0247$\pm$0.0002} & \cellcolor{mygray}1.00 & \cellcolor{mygray}1.0 \\
+ &  & NoAttack+Mean(Base) & 0.0245$\pm$0.0004 & 0.0245$\pm$0.0004 & 0.0245$\pm$0.0004 & 0.0245$\pm$0.0004 & -- & -- \\
+\midrule
+\multirow{14}{*}{\makecell[c]{Non-IID\\($\alpha=0.5$)}} & \multirow{7}{*}{40} & Mean & \textbf{0.0290$\pm$0.0003} & 0.0435$\pm$0.0024 & 0.0268$\pm$0.0003 & 0.0268$\pm$0.0004 & 2.50 & 2.0 \\
+ &  & NormClipping & 0.0482$\pm$0.0005 & 0.0560$\pm$0.0005 & 0.0490$\pm$0.0006 & 0.0496$\pm$0.0008 & 5.25 & 6.0 \\
+ &  & MultiKrum & 0.0448$\pm$0.0008 & 0.0327$\pm$0.0005 & 0.0279$\pm$0.0005 & 0.0293$\pm$0.0013 & 3.25 & 4.0 \\
+ &  & FLTrust & 0.0422$\pm$0.0002 & 0.0415$\pm$0.0004 & 0.0414$\pm$0.0005 & 0.0416$\pm$0.0004 & 3.75 & 5.0 \\
+ &  & FLDetector & 0.0311$\pm$0.0006 & 0.0572$\pm$0.0032 & 0.0267$\pm$0.0003 & 0.0268$\pm$0.0004 & 3.00 & 3.0 \\
+ &  & \cellcolor{mygray}TriGuardFL & \cellcolor{mygray}\textbf{0.0290$\pm$0.0004} & \cellcolor{mygray}\textbf{0.0267$\pm$0.0004} & \cellcolor{mygray}\textbf{0.0266$\pm$0.0003} & \cellcolor{mygray}\textbf{0.0265$\pm$0.0002} & \cellcolor{mygray}1.00 & \cellcolor{mygray}1.0 \\
+ &  & NoAttack+Mean(Base) & 0.0259$\pm$0.0003 & 0.0259$\pm$0.0003 & 0.0259$\pm$0.0003 & 0.0259$\pm$0.0003 & -- & -- \\
+\midrule
+ & \multirow{7}{*}{60} & Mean & \textbf{0.0284$\pm$0.0007} & 0.0384$\pm$0.0003 & 0.0260$\pm$0.0005 & 0.0260$\pm$0.0005 & 2.00 & 2.0 \\
+ &  & NormClipping & 0.0479$\pm$0.0004 & 0.0575$\pm$0.0011 & 0.0487$\pm$0.0003 & 0.0496$\pm$0.0004 & 5.50 & 6.0 \\
+ &  & MultiKrum & 0.0472$\pm$0.0008 & 0.0316$\pm$0.0006 & 0.0273$\pm$0.0013 & 0.0289$\pm$0.0013 & 3.25 & 4.0 \\
+ &  & FLTrust & 0.0422$\pm$0.0005 & 0.0431$\pm$0.0021 & 0.0411$\pm$0.0005 & 0.0418$\pm$0.0005 & 4.00 & 5.0 \\
+ &  & FLDetector & 0.0303$\pm$0.0006 & 0.0449$\pm$0.0012 & 0.0260$\pm$0.0005 & 0.0260$\pm$0.0004 & 3.00 & 3.0 \\
+ &  & \cellcolor{mygray}TriGuardFL & \cellcolor{mygray}0.0285$\pm$0.0006 & \cellcolor{mygray}\textbf{0.0264$\pm$0.0004} & \cellcolor{mygray}\textbf{0.0255$\pm$0.0003} & \cellcolor{mygray}\textbf{0.0255$\pm$0.0003} & \cellcolor{mygray}1.25 & \cellcolor{mygray}1.0 \\
+ &  & NoAttack+Mean(Base) & 0.0253$\pm$0.0004 & 0.0253$\pm$0.0004 & 0.0253$\pm$0.0004 & 0.0253$\pm$0.0004 & -- & -- \\
+\midrule
+\multirow{14}{*}{\makecell[c]{Non-IID\\($\alpha=0.1$)}} & \multirow{7}{*}{40} & Mean & 0.0346$\pm$0.0007 & 0.0465$\pm$0.0018 & 0.0314$\pm$0.0006 & 0.0312$\pm$0.0006 & 2.50 & 2.0 \\
+ &  & NormClipping & 0.0524$\pm$0.0004 & 0.0602$\pm$0.0005 & 0.0537$\pm$0.0006 & 0.0544$\pm$0.0006 & 5.75 & 6.0 \\
+ &  & MultiKrum & 0.0552$\pm$0.0007 & 0.0419$\pm$0.0010 & 0.0346$\pm$0.0005 & 0.0370$\pm$0.0014 & 4.00 & 4.0 \\
+ &  & FLTrust & 0.0466$\pm$0.0005 & 0.0458$\pm$0.0005 & 0.0460$\pm$0.0005 & 0.0468$\pm$0.0005 & 4.25 & 5.0 \\
+ &  & FLDetector & 0.0373$\pm$0.0009 & 0.0550$\pm$0.0043 & 0.0315$\pm$0.0008 & 0.0315$\pm$0.0006 & 3.50 & 3.0 \\
+ &  & \cellcolor{mygray}TriGuardFL & \cellcolor{mygray}\textbf{0.0345$\pm$0.0006} & \cellcolor{mygray}\textbf{0.0305$\pm$0.0004} & \cellcolor{mygray}\textbf{0.0311$\pm$0.0007} & \cellcolor{mygray}\textbf{0.0308$\pm$0.0005} & \cellcolor{mygray}1.00 & \cellcolor{mygray}1.0 \\
+ &  & NoAttack+Mean(Base) & 0.0303$\pm$0.0006 & 0.0303$\pm$0.0006 & 0.0303$\pm$0.0006 & 0.0303$\pm$0.0006 & -- & -- \\
+\midrule
+ & \multirow{7}{*}{60} & Mean & \textbf{0.0338$\pm$0.0012} & 0.0533$\pm$0.0120 & 0.0303$\pm$0.0005 & 0.0305$\pm$0.0007 & 2.50 & 2.0 \\
+ &  & NormClipping & 0.0518$\pm$0.0004 & 0.0641$\pm$0.0059 & 0.0530$\pm$0.0005 & 0.0538$\pm$0.0004 & 5.50 & 6.0 \\
+ &  & MultiKrum & 0.0563$\pm$0.0005 & 0.0389$\pm$0.0016 & 0.0327$\pm$0.0006 & 0.0355$\pm$0.0014 & 3.75 & 4.0 \\
+ &  & FLTrust & 0.0463$\pm$0.0007 & 0.0519$\pm$0.0090 & 0.0454$\pm$0.0006 & 0.0459$\pm$0.0007 & 4.00 & 5.0 \\
+ &  & FLDetector & 0.0361$\pm$0.0007 & 0.0552$\pm$0.0112 & 0.0304$\pm$0.0007 & 0.0304$\pm$0.0007 & 3.00 & 3.0 \\
+ &  & \cellcolor{mygray}TriGuardFL & \cellcolor{mygray}\textbf{0.0338$\pm$0.0011} & \cellcolor{mygray}\textbf{0.0292$\pm$0.0015} & \cellcolor{mygray}\textbf{0.0298$\pm$0.0005} & \cellcolor{mygray}\textbf{0.0298$\pm$0.0006} & \cellcolor{mygray}1.00 & \cellcolor{mygray}1.0 \\
+ &  & NoAttack+Mean(Base) & 0.0294$\pm$0.0006 & 0.0294$\pm$0.0006 & 0.0294$\pm$0.0006 & 0.0294$\pm$0.0006 & -- & -- \\
+\bottomrule
+\end{tabular}
+\end{table*}

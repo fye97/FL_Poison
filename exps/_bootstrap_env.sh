@@ -20,6 +20,20 @@ flpoison_source_cc_env() {
   local env_script=""
 
   export FLPOISON_REPO_ROOT="${repo_root}"
+  if ! command -v module >/dev/null 2>&1; then
+    local module_init=""
+    for module_init in \
+      /etc/profile.d/lmod.sh \
+      /etc/profile.d/modules.sh \
+      /usr/share/lmod/lmod/init/bash \
+      /opt/apps/lmod/lmod/init/bash; do
+      if [ -f "${module_init}" ]; then
+        # shellcheck disable=SC1090
+        . "${module_init}"
+        break
+      fi
+    done
+  fi
   if ! env_script="$(flpoison_resolve_bootstrap_path "${repo_root}" "${env_script_raw}")"; then
     return 0
   fi
@@ -68,4 +82,34 @@ flpoison_bootstrap_python() {
 
   export CODE_SRC_ROOT="${CODE_SRC_ROOT:-${repo_root}}"
   export PYTHON_BIN="${py_bin}"
+}
+
+
+flpoison_require_python_imports() {
+  local py_bin="$1"
+  shift || true
+
+  if [ "${FLPOISON_SKIP_IMPORT_CHECK:-0}" = "1" ] || [ $# -eq 0 ]; then
+    return 0
+  fi
+
+  if ! [ -x "${py_bin}" ] && ! command -v "${py_bin}" >/dev/null 2>&1; then
+    echo "error: resolved PYTHON_BIN is not executable: ${py_bin}" >&2
+    return 1
+  fi
+
+  if ! "${py_bin}" - "$@" <<'PY'
+import importlib.util
+import sys
+
+missing = [name for name in sys.argv[1:] if importlib.util.find_spec(name) is None]
+if missing:
+    raise SystemExit("missing imports: " + ", ".join(missing))
+PY
+  then
+    echo "error: Python environment check failed for ${py_bin}" >&2
+    echo "hint: on Compute Canada, either create exps/cc_env.sh from exps/cc_env.example.sh" >&2
+    echo "hint: or ensure ${FLPOISON_REPO_ROOT}/.venv exists on shared storage and contains project deps" >&2
+    return 1
+  fi
 }

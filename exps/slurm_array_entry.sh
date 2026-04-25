@@ -10,6 +10,7 @@ source "${script_dir}/_bootstrap_env.sh"
 
 flpoison_bootstrap_python "${repo_root}"
 py_bin="${PYTHON_BIN}"
+flpoison_require_python_imports "${py_bin}" yaml torch torchvision
 
 mkdir -p "${repo_root}/logs/slurm"
 
