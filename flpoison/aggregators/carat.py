@@ -279,6 +279,7 @@ class CARAT(AggregatorBase):
             "num_probe_tasks": 8,
             "probe_samples_per_class": 4,
             "probe_task_batch_size": 128,
+            "probe_num_workers": 0,
             "probe_radius_quantile": 0.5,
             "clip_method": "mad",
             "clip_k": 2.5,
@@ -353,7 +354,7 @@ class CARAT(AggregatorBase):
                 task_dataset,
                 batch_size=batch_size,
                 shuffle=False,
-                num_workers=self.args.num_workers,
+                num_workers=max(0, int(self.probe_num_workers)),
                 pin_memory=pin_memory,
             )
             loaders.append(loader)

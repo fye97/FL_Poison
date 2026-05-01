@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import re
 from pathlib import Path
 
@@ -21,10 +22,10 @@ ALPHAS = ("1", "0.5")
 DEFENSES = (
     "Mean",
     "NormClipping",
+    "TrimmedMean",
     "MultiKrum",
     "FLTrust",
     "FLDetector",
-    "TriGuardFL",
     "CARAT",
 )
 
@@ -32,10 +33,10 @@ COLORS = {
     "NoAttack+Mean": "#222222",
     "Mean": "#7f7f7f",
     "NormClipping": "#c44e52",
+    "TrimmedMean": "#009E73",
     "MultiKrum": "#8172b2",
     "FLTrust": "#8c6d31",
     "FLDetector": "#dd8452",
-    "TriGuardFL": "#55a868",
     "CARAT": "#4c72b0",
 }
 
@@ -43,15 +44,15 @@ LINESTYLES = {
     "NoAttack+Mean": (0, (4, 2)),
     "Mean": "-",
     "NormClipping": "-",
+    "TrimmedMean": "-",
     "MultiKrum": "-",
     "FLTrust": "-",
     "FLDetector": "-",
-    "TriGuardFL": "-",
     "CARAT": "-",
 }
 
 
-def parse_series(path: Path, expected_rounds: int) -> np.ndarray | None:
+def parse_legacy_series(path: Path, expected_rounds: int) -> np.ndarray | None:
     values: list[tuple[int, float]] = []
     with path.open(errors="ignore") as handle:
         for line in handle:
@@ -77,7 +78,55 @@ def parse_series(path: Path, expected_rounds: int) -> np.ndarray | None:
     return arr
 
 
-def collect(
+def parse_csv_series(path: Path, expected_rounds: int) -> np.ndarray | None:
+    values: list[tuple[int, float]] = []
+    with path.open(encoding="utf-8", newline="") as handle:
+        for row in csv.DictReader(handle):
+            epoch_text = (row.get("epoch") or "").strip()
+            acc_text = (row.get("eval_acc") or "").strip()
+            if not epoch_text or not acc_text:
+                continue
+            values.append((int(float(epoch_text)), 100.0 * float(acc_text)))
+
+    if not values:
+        return None
+    values.sort(key=lambda item: item[0])
+    if len(values) < expected_rounds or values[-1][0] < expected_rounds - 1:
+        return None
+
+    arr = np.full(expected_rounds, np.nan, dtype=np.float64)
+    for epoch, test_acc in values:
+        if 0 <= epoch < expected_rounds:
+            arr[epoch] = test_acc
+    if np.isnan(arr).any():
+        return None
+    return arr
+
+
+def collect_local_csv(
+    result_root: Path,
+    alpha: str,
+    attack: str,
+    defense: str,
+    expected_rounds: int,
+) -> list[np.ndarray]:
+    pattern = (
+        "FedAvg/CIFAR100_resnet18/non-iid/"
+        f"{attack}__{defense}/"
+        f"ep{expected_rounds}_clients20_lr0.05_adv0.2_seed*_exp*_alpha{alpha}_"
+        "cfgFedAvg_CIFAR100_Resnet18_protocol/metrics_exp*.csv"
+    )
+    series: list[np.ndarray] = []
+    for path in sorted(result_root.glob(pattern)):
+        if not (path.parent / "task.complete").exists():
+            continue
+        parsed = parse_csv_series(path, expected_rounds)
+        if parsed is not None:
+            series.append(parsed)
+    return series
+
+
+def collect_legacy(
     root: Path,
     alpha: str,
     attack: str,
@@ -90,10 +139,25 @@ def collect(
     )
     series: list[np.ndarray] = []
     for path in sorted(root.glob(pattern)):
-        parsed = parse_series(path, expected_rounds)
+        parsed = parse_legacy_series(path, expected_rounds)
         if parsed is not None:
             series.append(parsed)
     return series
+
+
+def collect(
+    playground_root: Path,
+    result_root: Path,
+    alpha: str,
+    attack: str,
+    defense: str,
+    expected_rounds: int,
+) -> list[np.ndarray]:
+    root = playground_root / "FedAvg" / "CIFAR100_resnet18" / "non-iid"
+    local = collect_local_csv(result_root, alpha, attack, defense, expected_rounds)
+    if local:
+        return local
+    return collect_legacy(root, alpha, attack, defense, expected_rounds)
 
 
 def mean_and_std(series: list[np.ndarray]) -> tuple[np.ndarray, np.ndarray]:
@@ -101,8 +165,7 @@ def mean_and_std(series: list[np.ndarray]) -> tuple[np.ndarray, np.ndarray]:
     return stacked.mean(axis=0), stacked.std(axis=0, ddof=0)
 
 
-def plot(output: Path, playground_root: Path, expected_rounds: int) -> None:
-    root = playground_root / "FedAvg" / "CIFAR100_resnet18" / "non-iid"
+def plot(output: Path, playground_root: Path, result_root: Path, expected_rounds: int) -> None:
     rounds = np.arange(expected_rounds)
 
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -132,7 +195,7 @@ def plot(output: Path, playground_root: Path, expected_rounds: int) -> None:
     for ax, alpha in zip(axes, ALPHAS):
         plotted_values: list[np.ndarray] = []
 
-        clean_series = collect(root, alpha, "NoAttack", "Mean", expected_rounds)
+        clean_series = collect(playground_root, result_root, alpha, "NoAttack", "Mean", expected_rounds)
         if clean_series:
             clean_mean, _ = mean_and_std(clean_series)
             (line,) = ax.plot(
@@ -148,12 +211,12 @@ def plot(output: Path, playground_root: Path, expected_rounds: int) -> None:
             plotted_values.append(clean_mean)
 
         for defense in DEFENSES:
-            series = collect(root, alpha, ATTACK, defense, expected_rounds)
+            series = collect(playground_root, result_root, alpha, ATTACK, defense, expected_rounds)
             if not series:
                 continue
             avg, std = mean_and_std(series)
             linewidth = 2.5 if defense == "CARAT" else 1.55
-            alpha_line = 1.0 if defense in {"CARAT", "TriGuardFL", "FLDetector"} else 0.78
+            alpha_line = 1.0 if defense in {"CARAT", "FLDetector"} else 0.78
             (line,) = ax.plot(
                 rounds,
                 avg,
@@ -221,11 +284,12 @@ def main() -> None:
         description="Plot CIFAR-100/ResNet18 FangAttack accuracy curves for the CARAT paper."
     )
     parser.add_argument("--playground-root", type=Path, default=default_playground)
+    parser.add_argument("--result-root", type=Path, default=repo_root / "logs" / "local_runs")
     parser.add_argument("--output", type=Path, default=default_output)
     parser.add_argument("--rounds", type=int, default=200)
     args = parser.parse_args()
 
-    plot(args.output, args.playground_root, args.rounds)
+    plot(args.output, args.playground_root, args.result_root, args.rounds)
     print(args.output)
 
 
