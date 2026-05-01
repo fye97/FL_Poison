@@ -13,9 +13,18 @@ import launch
 from flpoison.utils.output_utils import run_log_path
 
 
-DEFAULT_PLAYGROUND_ROOT = Path(
-    "/home/cnlab-pu/Project/Poisoning_Resilient_Federated_Learning_Playground"
-)
+def default_playground_root() -> Path:
+    candidates = [
+        Path.home() / "Projects" / "Poisoning_Resilient_Federated_Learning_Playground",
+        Path.home() / "Project" / "Poisoning_Resilient_Federated_Learning_Playground",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
+
+DEFAULT_PLAYGROUND_ROOT = default_playground_root()
 EPOCH_LINE_RE = re.compile(r"^Epoch\s+(?P<epoch>\d+)\b")
 SUMMARY_KV_RE = re.compile(r"^\s{2,}(?P<key>[A-Za-z_][A-Za-z0-9_]*)\s*:\s*(?P<value>.*)$")
 

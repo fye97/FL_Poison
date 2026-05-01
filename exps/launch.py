@@ -591,6 +591,16 @@ def resolve_python_bin(root: Path) -> str:
     if override:
         return override
 
+    venv_override = os.environ.get("VENV_PATH")
+    if venv_override:
+        candidate = Path(venv_override) / "bin" / "python"
+        if candidate.exists():
+            return str(candidate)
+
+    repo_venv = root / ".venv" / "bin" / "python"
+    if repo_venv.exists():
+        return str(repo_venv)
+
     active_venv = os.environ.get("VIRTUAL_ENV")
     if active_venv:
         candidate = Path(active_venv) / "bin" / "python"
@@ -602,16 +612,6 @@ def resolve_python_bin(root: Path) -> str:
         candidate = Path(uv_project_env) / "bin" / "python"
         if candidate.exists():
             return str(candidate)
-
-    venv_override = os.environ.get("VENV_PATH")
-    if venv_override:
-        candidate = Path(venv_override) / "bin" / "python"
-        if candidate.exists():
-            return str(candidate)
-
-    repo_venv = root / ".venv" / "bin" / "python"
-    if repo_venv.exists():
-        return str(repo_venv)
 
     if sys.executable:
         return sys.executable

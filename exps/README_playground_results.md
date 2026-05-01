@@ -3,7 +3,7 @@
 The shared result library is:
 
 ```bash
-/home/cnlab-pu/Project/Poisoning_Resilient_Federated_Learning_Playground
+/home/cnlab-pu/Projects/Poisoning_Resilient_Federated_Learning_Playground
 ```
 
 Existing files use the legacy text-log format:

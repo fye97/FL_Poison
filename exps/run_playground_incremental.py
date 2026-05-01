@@ -77,6 +77,7 @@ def missing_ids(
     python_bin: str,
     spec: str,
     ids: str,
+    playground_root: Path,
     match_config: str,
     also_local: bool,
 ) -> list[int]:
@@ -87,6 +88,8 @@ def missing_ids(
         spec,
         "--ids",
         ids,
+        "--playground-root",
+        str(playground_root),
         "--match-config",
         match_config,
         "--format",
@@ -127,6 +130,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("spec", help="Experiment spec path or identifier.")
     parser.add_argument("--ids", default="all", help="Task ids/ranges to consider.")
+    parser.add_argument(
+        "--playground-root",
+        type=Path,
+        default=playground_results.DEFAULT_PLAYGROUND_ROOT,
+        help="Root of Poisoning_Resilient_Federated_Learning_Playground.",
+    )
     parser.add_argument("--cuda", default="0,1", help="Candidate physical GPU ids.")
     parser.add_argument("--min-free-mb", type=int, default=12000)
     parser.add_argument(
@@ -148,12 +157,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     repo = launch.repo_root()
     python_bin = sys.executable
     candidates = parse_cuda_list(args.cuda)
+    playground_root = args.playground_root.expanduser().resolve()
 
     pending = missing_ids(
         repo=repo,
         python_bin=python_bin,
         spec=args.spec,
         ids=args.ids,
+        playground_root=playground_root,
         match_config=args.match_config,
         also_local=args.also_local,
     )
@@ -165,6 +176,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             python_bin=python_bin,
             spec=args.spec,
             ids=str(task_id),
+            playground_root=playground_root,
             match_config=args.match_config,
             also_local=False,
         )
@@ -205,6 +217,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.spec,
                 "--ids",
                 str(task_id),
+                "--playground-root",
+                str(playground_root),
             ],
             cwd=repo,
         )
