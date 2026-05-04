@@ -22,7 +22,6 @@ ALPHAS = ("1", "0.5")
 DEFENSES = (
     "Mean",
     "NormClipping",
-    "TrimmedMean",
     "MultiKrum",
     "FLTrust",
     "FLDetector",
@@ -30,25 +29,37 @@ DEFENSES = (
 )
 
 COLORS = {
-    "NoAttack+Mean": "#222222",
-    "Mean": "#7f7f7f",
-    "NormClipping": "#c44e52",
-    "TrimmedMean": "#009E73",
-    "MultiKrum": "#8172b2",
-    "FLTrust": "#8c6d31",
-    "FLDetector": "#dd8452",
-    "CARAT": "#4c72b0",
+    "NoAttack+Mean": "#272727",
+    "Mean": "#8A8A8A",
+    "NormClipping": "#B64342",
+    "MultiKrum": "#9A4D8E",
+    "FLTrust": "#42949E",
+    "FLDetector": "#D9892B",
+    "CARAT": "#0F4D92",
 }
 
 LINESTYLES = {
-    "NoAttack+Mean": (0, (4, 2)),
+    "NoAttack+Mean": (0, (5, 2.4)),
     "Mean": "-",
     "NormClipping": "-",
-    "TrimmedMean": "-",
     "MultiKrum": "-",
     "FLTrust": "-",
     "FLDetector": "-",
     "CARAT": "-",
+}
+
+FINAL_PROTOCOL_DEFENSES = {"FLTrust", "CARAT"}
+FINAL_CFG = "FedAvg_CIFAR100_Resnet18_protocol"
+LEGACY_CFG = "FedAvg_CIFAR100_config"
+
+SHADE_ALPHA = {
+    "NoAttack+Mean": 0.045,
+    "Mean": 0.035,
+    "NormClipping": 0.035,
+    "MultiKrum": 0.04,
+    "FLTrust": 0.04,
+    "FLDetector": 0.045,
+    "CARAT": 0.16,
 }
 
 
@@ -126,6 +137,27 @@ def collect_local_csv(
     return series
 
 
+def collect_protocol_txt(
+    root: Path,
+    alpha: str,
+    attack: str,
+    defense: str,
+    expected_rounds: int,
+) -> list[np.ndarray]:
+    alpha_tokens = ("1", "1.0") if alpha == "1" else (alpha,)
+    series: list[np.ndarray] = []
+    for alpha_token in alpha_tokens:
+        pattern = (
+            f"CIFAR100_resnet18_non-iid_{attack}_{defense}_{expected_rounds}_20_0.05_"
+            f"FedAvg_adv0.2_seed*_alpha{alpha_token}_cfg{FINAL_CFG}_exp*.txt"
+        )
+        for path in sorted(root.glob(pattern)):
+            parsed = parse_legacy_series(path, expected_rounds)
+            if parsed is not None:
+                series.append(parsed)
+    return series
+
+
 def collect_legacy(
     root: Path,
     alpha: str,
@@ -133,15 +165,17 @@ def collect_legacy(
     defense: str,
     expected_rounds: int,
 ) -> list[np.ndarray]:
-    pattern = (
-        f"CIFAR100_resnet18_non-iid_{attack}_{defense}_200_20_0.05_"
-        f"FedAvg_adv0.2_seed*_alpha{alpha}_cfgFedAvg_CIFAR100_config_exp*.txt"
-    )
+    alpha_tokens = ("1", "1.0") if alpha == "1" else (alpha,)
     series: list[np.ndarray] = []
-    for path in sorted(root.glob(pattern)):
-        parsed = parse_legacy_series(path, expected_rounds)
-        if parsed is not None:
-            series.append(parsed)
+    for alpha_token in alpha_tokens:
+        pattern = (
+            f"CIFAR100_resnet18_non-iid_{attack}_{defense}_{expected_rounds}_20_0.05_"
+            f"FedAvg_adv0.2_seed*_alpha{alpha_token}_cfg{LEGACY_CFG}_exp*.txt"
+        )
+        for path in sorted(root.glob(pattern)):
+            parsed = parse_legacy_series(path, expected_rounds)
+            if parsed is not None:
+                series.append(parsed)
     return series
 
 
@@ -154,6 +188,10 @@ def collect(
     expected_rounds: int,
 ) -> list[np.ndarray]:
     root = playground_root / "FedAvg" / "CIFAR100_resnet18" / "non-iid"
+    if defense in FINAL_PROTOCOL_DEFENSES:
+        protocol = collect_protocol_txt(root, alpha, attack, defense, expected_rounds)
+        if protocol:
+            return protocol
     local = collect_local_csv(result_root, alpha, attack, defense, expected_rounds)
     if local:
         return local
@@ -162,7 +200,8 @@ def collect(
 
 def mean_and_std(series: list[np.ndarray]) -> tuple[np.ndarray, np.ndarray]:
     stacked = np.vstack(series)
-    return stacked.mean(axis=0), stacked.std(axis=0, ddof=0)
+    ddof = 1 if len(series) > 1 else 0
+    return stacked.mean(axis=0), stacked.std(axis=0, ddof=ddof)
 
 
 def plot(output: Path, playground_root: Path, result_root: Path, expected_rounds: int) -> None:
@@ -172,20 +211,24 @@ def plot(output: Path, playground_root: Path, result_root: Path, expected_rounds
 
     plt.rcParams.update(
         {
-            "font.family": "serif",
-            "font.size": 8.5,
-            "axes.labelsize": 9,
-            "axes.titlesize": 9.5,
-            "legend.fontsize": 8,
-            "xtick.labelsize": 8,
-            "ytick.labelsize": 8,
+            "font.family": "DejaVu Sans",
+            "font.size": 7.7,
+            "axes.labelsize": 8.0,
+            "axes.titlesize": 8.5,
+            "axes.linewidth": 0.9,
+            "legend.fontsize": 6.9,
+            "xtick.labelsize": 7.2,
+            "ytick.labelsize": 7.2,
+            "axes.spines.right": False,
+            "axes.spines.top": False,
+            "legend.frameon": False,
             "pdf.fonttype": 42,
             "ps.fonttype": 42,
         }
     )
 
-    fig = plt.figure(figsize=(10.4, 3.4), constrained_layout=True)
-    grid = fig.add_gridspec(1, 3, width_ratios=[1.0, 1.0, 0.65])
+    fig = plt.figure(figsize=(6.9, 2.34), constrained_layout=True)
+    grid = fig.add_gridspec(1, 3, width_ratios=[1.0, 1.0, 0.56], wspace=0.05)
     axes = [fig.add_subplot(grid[0, 0]), fig.add_subplot(grid[0, 1])]
     legend_ax = fig.add_subplot(grid[0, 2])
     legend_ax.set_axis_off()
@@ -197,15 +240,24 @@ def plot(output: Path, playground_root: Path, result_root: Path, expected_rounds
 
         clean_series = collect(playground_root, result_root, alpha, "NoAttack", "Mean", expected_rounds)
         if clean_series:
-            clean_mean, _ = mean_and_std(clean_series)
+            clean_mean, clean_std = mean_and_std(clean_series)
             (line,) = ax.plot(
                 rounds,
                 clean_mean,
                 color=COLORS["NoAttack+Mean"],
                 linestyle=LINESTYLES["NoAttack+Mean"],
-                linewidth=1.9,
+                linewidth=1.75,
                 label=f"NoAttack+Mean (n={len(clean_series)})",
-                zorder=1,
+                zorder=2,
+            )
+            ax.fill_between(
+                rounds,
+                clean_mean - clean_std,
+                clean_mean + clean_std,
+                color=COLORS["NoAttack+Mean"],
+                alpha=SHADE_ALPHA["NoAttack+Mean"],
+                linewidth=0,
+                zorder=0,
             )
             legend_handles.setdefault("NoAttack+Mean", line)
             plotted_values.append(clean_mean)
@@ -215,8 +267,8 @@ def plot(output: Path, playground_root: Path, result_root: Path, expected_rounds
             if not series:
                 continue
             avg, std = mean_and_std(series)
-            linewidth = 2.5 if defense == "CARAT" else 1.55
-            alpha_line = 1.0 if defense in {"CARAT", "FLDetector"} else 0.78
+            linewidth = 2.6 if defense == "CARAT" else 1.42
+            alpha_line = 1.0 if defense == "CARAT" else 0.76
             (line,) = ax.plot(
                 rounds,
                 avg,
@@ -225,48 +277,54 @@ def plot(output: Path, playground_root: Path, result_root: Path, expected_rounds
                 linewidth=linewidth,
                 alpha=alpha_line,
                 label=f"{defense} (n={len(series)})",
-                zorder=4 if defense == "CARAT" else 2,
+                zorder=5 if defense == "CARAT" else 3,
             )
-            if defense == "CARAT":
-                ax.fill_between(
-                    rounds,
-                    avg - std,
-                    avg + std,
-                    color=COLORS[defense],
-                    alpha=0.14,
-                    linewidth=0,
-                    zorder=3,
-                )
+            band_zorder = 4 if defense == "CARAT" else 1
+            ax.fill_between(
+                rounds,
+                avg - std,
+                avg + std,
+                color=COLORS[defense],
+                alpha=SHADE_ALPHA[defense],
+                linewidth=0,
+                zorder=band_zorder,
+            )
             legend_handles.setdefault(defense, line)
             plotted_values.append(avg)
 
-        ax.set_title(rf"{ATTACK}, $\alpha={alpha}$")
+        ax.set_title(rf"Dirichlet $\alpha={alpha}$", pad=3)
         ax.set_xlabel("Round")
-        ax.grid(alpha=0.22, linewidth=0.55)
+        ax.grid(axis="y", color="#E4E4E4", linewidth=0.55)
         ax.set_axisbelow(True)
-        ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
+        ax.spines["left"].set_color("#3A3A3A")
+        ax.spines["bottom"].set_color("#3A3A3A")
         if plotted_values:
             stacked = np.vstack(plotted_values)
             ymax = min(60.0, float(np.nanmax(stacked)) + 3.0)
             ax.set_ylim(0.0, ymax)
-        ax.set_xlim(0, expected_rounds - 1)
+        ax.set_xlim(0, expected_rounds)
+        ax.set_xticks([0, 50, 100, 150, 200])
+        ax.set_yticks([0, 20, 40, 60])
 
     axes[0].set_ylabel("Test accuracy (%)")
+    axes[1].set_ylabel("")
 
-    ordered_labels = ["NoAttack+Mean", *DEFENSES]
+    ordered_labels = ["CARAT", "NoAttack+Mean", "Mean", "NormClipping", "MultiKrum", "FLTrust", "FLDetector"]
     handles = [legend_handles[label] for label in ordered_labels if label in legend_handles]
     labels = [handle.get_label() for handle in handles]
     legend_ax.legend(
         handles,
         labels,
         loc="center left",
-        frameon=False,
-        handlelength=2.6,
+        title="Defense",
+        title_fontsize=7.1,
+        handlelength=2.2,
+        handletextpad=0.55,
+        labelspacing=0.36,
         borderaxespad=0.0,
     )
 
-    fig.savefig(output, bbox_inches="tight")
+    fig.savefig(output, bbox_inches="tight", pad_inches=0.02)
 
 
 def main() -> None:

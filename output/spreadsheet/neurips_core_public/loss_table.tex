@@ -1,0 +1,30 @@
+\begin{table*}[!htbp]
+\centering
+\caption{Final test loss under four model-poisoning attacks on CIFAR-100/ResNet18 with $20\%$ malicious clients and non-i.i.d.\ client partitions. Lower is better. Legacy public-baseline rows reuse five-seed logs where available; TrimmedMean, FLTrust, and CARAT are regenerated under the locked public-baseline protocol with three seeds and matched CARAT/FLTrust reference budgets.}
+\label{tab:cifar100-main-loss}
+\renewcommand{\arraystretch}{1.05}
+\small
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llccccc}
+\toprule
+\textbf{Dirichlet $\alpha$} & \textbf{Defense} & \textbf{ALIE} & \textbf{FangAttack} & \textbf{MinMax} & \textbf{MinSum} & \textbf{Avg. rank} \\
+\midrule
+\textbf{$1.0$} & Mean & $0.0292 \pm 0.0004$ & $0.0294 \pm 0.0004$ & $0.0283 \pm 0.0004$ & $0.0283 \pm 0.0006$ & $3.2$ \\
+\textbf{$1.0$} & NormClipping & $0.0476 \pm 0.0005$ & $0.0501 \pm 0.0004$ & $0.0484 \pm 0.0004$ & $0.0485 \pm 0.0003$ & $7.0$ \\
+\textbf{$1.0$} & TrimmedMean & \textbf{$0.0263 \pm 0.0005$} & \textbf{$0.0243 \pm 0.0005$} & \textbf{$0.0241 \pm 0.0003$} & \textbf{$0.0240 \pm 0.0003$} & \textbf{$1.0$} \\
+\textbf{$1.0$} & MultiKrum & $0.0361 \pm 0.0006$ & $0.0377 \pm 0.0005$ & $0.0295 \pm 0.0005$ & $0.0301 \pm 0.0009$ & $5.0$ \\
+\textbf{$1.0$} & FLTrust (matched) & $0.0363 \pm 0.0016$ & $0.0375 \pm 0.0015$ & $0.0344 \pm 0.0008$ & $0.0346 \pm 0.0013$ & $5.5$ \\
+\textbf{$1.0$} & FLDetector & $0.0305 \pm 0.0004$ & $0.0450 \pm 0.0035$ & $0.0283 \pm 0.0006$ & $0.0284 \pm 0.0003$ & $4.2$ \\
+\textbf{$1.0$} & \textbf{CARAT ($T=8$)} & $0.0279 \pm 0.0010$ & $0.0256 \pm 0.0008$ & $0.0255 \pm 0.0005$ & $0.0252 \pm 0.0009$ & $2.0$ \\
+\midrule
+\textbf{$0.5$} & Mean & $0.0303 \pm 0.0005$ & $0.0302 \pm 0.0006$ & $0.0293 \pm 0.0001$ & $0.0293 \pm 0.0004$ & $3.2$ \\
+\textbf{$0.5$} & NormClipping & $0.0486 \pm 0.0005$ & $0.0517 \pm 0.0011$ & $0.0497 \pm 0.0005$ & $0.0498 \pm 0.0004$ & $7.0$ \\
+\textbf{$0.5$} & TrimmedMean & \textbf{$0.0264 \pm 0.0005$} & \textbf{$0.0257 \pm 0.0006$} & \textbf{$0.0248 \pm 0.0006$} & \textbf{$0.0248 \pm 0.0006$} & \textbf{$1.0$} \\
+\textbf{$0.5$} & MultiKrum & $0.0382 \pm 0.0008$ & $0.0407 \pm 0.0010$ & $0.0306 \pm 0.0006$ & $0.0308 \pm 0.0006$ & $5.0$ \\
+\textbf{$0.5$} & FLTrust (matched) & $0.0396 \pm 0.0005$ & $0.0403 \pm 0.0005$ & $0.0362 \pm 0.0002$ & $0.0361 \pm 0.0002$ & $5.5$ \\
+\textbf{$0.5$} & FLDetector & $0.0319 \pm 0.0004$ & $0.0458 \pm 0.0011$ & $0.0294 \pm 0.0004$ & $0.0292 \pm 0.0005$ & $4.2$ \\
+\textbf{$0.5$} & \textbf{CARAT ($T=8$)} & $0.0285 \pm 0.0012$ & $0.0272 \pm 0.0008$ & $0.0258 \pm 0.0008$ & $0.0258 \pm 0.0004$ & $2.0$ \\
+\bottomrule
+\end{tabular}
+}
+\end{table*}
